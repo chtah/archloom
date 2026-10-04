@@ -43,7 +43,8 @@ local Chromium-based browser; point `CHROME_BIN` at its executable.
 For a behavior change, add a regression test that goes through the public API or
 the CLI. For a visual change, look at the architecture and data-flow output in
 both themes; snapshots alone do not show that a diagram is correct. Add a line to
-[CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
+[CHANGELOG.md](CHANGELOG.md) for anything a user would notice. A change to the
+agent skill should come with a run of the [skill evaluations](evals/README.md).
 
 `main` is protected: changes arrive through a pull request with passing CI.
 

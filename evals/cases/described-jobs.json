@@ -1,0 +1,18 @@
+{
+  "id": "described-jobs",
+  "title": "A system described in words: asynchronous delivery",
+  "prompt": "Create an Archloom diagram for a fictional scheduled job system: Scheduler publishes a task to Queue, Queue delivers the task asynchronously to Worker, Worker saves the result in Object Store. Group Control, Processing and Storage. Include a representative ordered flow with notes and summaries. Save the graph as jobs.archloom.json.",
+  "nodeRange": [4, 4],
+  "components": [
+    { "key": "store", "match": ["object", "store", "storage"] },
+    { "key": "scheduler", "match": ["schedul"] },
+    { "key": "queue", "match": ["queue"] },
+    { "key": "worker", "match": ["worker"] }
+  ],
+  "edges": [
+    { "from": "scheduler", "to": "queue" },
+    { "from": "queue", "to": "worker" },
+    { "from": "worker", "to": "store" }
+  ],
+  "minFlows": 1
+}

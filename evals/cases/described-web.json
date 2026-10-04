@@ -1,0 +1,16 @@
+{
+  "id": "described-web",
+  "title": "A system described in words: request and response",
+  "prompt": "Create an Archloom architecture diagram and request flow for a fictional web app: Browser sends GET /records to API, API reads Database, Database returns rows, API returns JSON. Group Client, Application and Storage. Add summaries and step notes. Save the graph as records.archloom.json.",
+  "nodeRange": [3, 3],
+  "components": [
+    { "key": "database", "match": ["database", "db", "storage"] },
+    { "key": "browser", "match": ["browser", "client"] },
+    { "key": "api", "match": ["api"] }
+  ],
+  "edges": [
+    { "from": "browser", "to": "api" },
+    { "from": "api", "to": "database" }
+  ],
+  "minFlows": 1
+}

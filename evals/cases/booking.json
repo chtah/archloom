@@ -1,0 +1,27 @@
+{
+  "id": "booking",
+  "title": "Disabled services, dead code, test doubles and a README that is wrong",
+  "fixture": "booking",
+  "prompt": "Read this codebase and create an Archloom architecture diagram of the system, with one data-flow diagram for booking a court. Save the graph as docs/architecture/booking.archloom.json.",
+  "nodeRange": [4, 6],
+  "components": [
+    { "key": "cardly", "match": ["cardly", "deposit", "payment"] },
+    { "key": "postgres", "match": ["postgres", "database", "db"] },
+    { "key": "site", "match": ["nginx", "site", "frontend", "web"] },
+    { "key": "api", "match": ["api", "backend"] }
+  ],
+  "optional": [{ "key": "person", "match": ["member", "player", "browser", "user"] }],
+  "forbidden": [
+    { "key": "search", "match": ["elastic", "search"], "why": "commented out in compose.yaml" },
+    { "key": "kafka", "match": ["kafka", "analytics", "event bus"], "why": "only the README mentions it; no code or service exists" },
+    { "key": "sms", "match": ["sms", "textwave"], "why": "nothing imports the module" },
+    { "key": "soap", "match": ["soap", "legacy"], "why": "retired and not built or deployed" },
+    { "key": "fake", "match": ["fake", "mock", "stub"], "why": "a test double, not part of the running system" }
+  ],
+  "edges": [
+    { "from": "site", "to": "api" },
+    { "from": "api", "to": "postgres" },
+    { "from": "api", "to": "cardly" }
+  ],
+  "minFlows": 1
+}

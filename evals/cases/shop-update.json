@@ -1,0 +1,31 @@
+{
+  "id": "shop-update",
+  "title": "Update an existing diagram after the code changed",
+  "fixture": "shop-update",
+  "existing": "docs/architecture/shop.archloom.json",
+  "prompt": "The code changed since the architecture diagram was drawn. Bring the Archloom diagram up to date with the code.",
+  "nodeRange": [7, 8],
+  "components": [
+    { "key": "notifier", "match": ["notif"] },
+    { "key": "mailhop", "match": ["mailhop", "email", "mail"] },
+    { "key": "postgres", "match": ["postgres", "database", "db"] },
+    { "key": "redis", "match": ["redis", "queue"] },
+    { "key": "worker", "match": ["worker", "fulfil"] },
+    { "key": "web", "match": ["web", "storefront", "frontend"] },
+    { "key": "api", "match": ["api", "backend"] }
+  ],
+  "optional": [{ "key": "person", "match": ["shopper", "customer", "browser", "user"] }],
+  "forbidden": [{ "key": "paygate", "match": ["paygate", "payment", "card"], "why": "the API no longer charges cards" }],
+  "edges": [
+    { "from": "web", "to": "api" },
+    { "from": "api", "to": "postgres" },
+    { "from": "api", "to": "redis" },
+    { "from": "redis", "to": "worker", "either": true },
+    { "from": "worker", "to": "postgres" },
+    { "from": "worker", "to": "notifier" },
+    { "from": "notifier", "to": "mailhop" }
+  ],
+  "forbiddenEdges": [{ "from": "worker", "to": "mailhop" }],
+  "preserveIds": ["storefront", "orders-api", "fulfilment-worker", "shop-db", "order-queue", "email-provider"],
+  "minFlows": 1
+}

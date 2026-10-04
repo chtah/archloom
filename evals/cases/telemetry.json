@@ -1,0 +1,136 @@
+{
+  "id": "telemetry",
+  "title": "A workspace with a queue, object storage and two APIs",
+  "fixture": "telemetry",
+  "prompt": "Read this codebase and create an Archloom architecture diagram of the system, with one data-flow diagram that follows a device reading from ingestion to the dashboard. Save the graph as docs/architecture/telemetry.archloom.json.",
+  "nodeRange": [
+    7,
+    9
+  ],
+  "components": [
+    {
+      "key": "queue",
+      "match": [
+        "queue",
+        "batches"
+      ]
+    },
+    {
+      "key": "bucket",
+      "match": [
+        "bucket",
+        "object stor",
+        "raw",
+        "storage"
+      ]
+    },
+    {
+      "key": "timeseries",
+      "match": [
+        "timeseries",
+        "time-series",
+        "time series",
+        "metrics",
+        "tsdb"
+      ]
+    },
+    {
+      "key": "ingest",
+      "match": [
+        "ingest"
+      ]
+    },
+    {
+      "key": "aggregator",
+      "match": [
+        "aggregat"
+      ]
+    },
+    {
+      "key": "query",
+      "match": [
+        "query"
+      ]
+    },
+    {
+      "key": "dashboard",
+      "match": [
+        "dashboard"
+      ]
+    }
+  ],
+  "optional": [
+    {
+      "key": "devices",
+      "match": [
+        "device",
+        "sensor"
+      ]
+    },
+    {
+      "key": "person",
+      "match": [
+        "operator",
+        "browser",
+        "user"
+      ]
+    },
+    {
+      "key": "shared",
+      "match": [
+        "shared"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "dashboard",
+      "to": "query"
+    },
+    {
+      "from": "query",
+      "to": "timeseries"
+    },
+    {
+      "from": "ingest",
+      "to": "bucket"
+    },
+    {
+      "from": "ingest",
+      "to": "queue"
+    },
+    {
+      "from": "queue",
+      "to": "aggregator",
+      "either": true
+    },
+    {
+      "from": "aggregator",
+      "to": "bucket",
+      "either": true
+    },
+    {
+      "from": "aggregator",
+      "to": "timeseries"
+    }
+  ],
+  "forbiddenEdges": [
+    {
+      "from": "dashboard",
+      "to": [
+        "ingest",
+        "timeseries",
+        "bucket",
+        "queue"
+      ]
+    },
+    {
+      "from": "ingest",
+      "to": [
+        "timeseries",
+        "aggregator"
+      ]
+    }
+  ],
+  "minFlows": 1
+}

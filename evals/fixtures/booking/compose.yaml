@@ -1,0 +1,20 @@
+services:
+  site:
+    image: nginx:1.29
+    volumes: ['./site:/usr/share/nginx/html:ro', './nginx.conf:/etc/nginx/conf.d/default.conf:ro']
+    ports: ['127.0.0.1:8080:80']
+    depends_on: [api]
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://booking@db:5432/booking
+      CARDLY_URL: https://api.cardly.example/v1
+    depends_on: [db]
+  db:
+    image: postgres:17
+
+  # Search was switched off in March; court lookup uses a SQL index now.
+  # search:
+  #   image: elasticsearch:9.1.0
+  #   environment:
+  #     discovery.type: single-node
