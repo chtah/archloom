@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in the library, CLI or canvas does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Use a fictional graph: no credentials, private endpoints, customer names or internal infrastructure.
+        For a vulnerability, do not file an issue; follow SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Archloom version
+      description: Output of `npx archloom --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node.js version and operating system; browser and version for canvas problems.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you ran
+      description: The command or API call.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: graph
+    attributes:
+      label: Smallest graph that reproduces it
+      description: A fictional graph, reduced as far as it still fails.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+      description: Include the error code and message, or a screenshot for visual problems.
+    validations:
+      required: true

@@ -43,6 +43,5 @@ them. Notices may be embedded in SVGs and displayed by the viewer. Keep required
 license notices when sharing generated assets. Third-party brand permissions
 remain your responsibility; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Historical PR Lens integrations retained in the checkout are inactive and are
-not distributed as Archloom. Upstream hosted-service policies do not describe
+The hosted-service policies of PR Lens, the upstream project, do not describe
 Archloom. For security concerns, see [SECURITY.md](SECURITY.md).
