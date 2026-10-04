@@ -1,97 +1,87 @@
 # Releasing Archloom
 
-This is an operator checklist, not an automatic release workflow. CI checks code
-and packages; it never publishes. Local preparation, npm login, publishing,
-Git tags/releases and deployment are separate actions requiring owner approval.
+A release is published by `.github/workflows/release.yml`, never from a
+workstation. Pushing a `v<version>` tag starts the workflow; it then waits for
+the owner to approve the `npm` environment. CI (`ci.yml`) only checks and never
+publishes.
 
-## Preconditions
+Only the root package `@chtah/archloom` is published. The private schema and
+renderer workspaces are bundled into it and are not separate releases.
 
-- Publish the root package only: `@chtah/archloom`. The scope belongs to the
-  maintainer's personal npm account, not an organization. The current target is
-  `0.2.0`; private schema/renderer workspaces are not published.
-- Use the owner-reviewed, merged commit with passing CI. Confirm `package.json`
-  name/version/repository/homepage and the exact public version being released.
-- The owner must verify their npm email and enable 2FA. Do not ask for passwords,
-  tokens, one-time codes or recovery codes in chat.
-- Check that GitHub private vulnerability reporting remains enabled and
-  `SECURITY.md` points to the correct repository.
-- Review packed contents, the retained upstream MIT copyright, third-party
-  notices, optional icon permissions and fictional examples. No private data.
-- Check the public registry for the target version. A missing public entry does
-  not prove publishing permissions; confirm the authenticated npm identity later.
+## One-time setup (owner)
 
-## Prepare locally (no credentials or publication)
+These are account settings, so the owner does them in the browser.
 
-Use Node.js 22+ and the pinned pnpm version. From the approved source checkout:
+1. **GitHub environment.** Repository Settings → Environments → new environment
+   `npm`. Add yourself as a required reviewer, and under deployment branches and
+   tags allow only the tag pattern `v*`.
+2. **npm trusted publisher.** On npmjs.com, open `@chtah/archloom` → Settings →
+   Trusted Publisher → GitHub Actions, with owner `chtah`, repository `archloom`,
+   workflow `release.yml` and environment `npm`.
+3. Keep 2FA enabled on the npm account. No npm token is created or stored: the
+   workflow authenticates with a short-lived OIDC identity.
 
-```bash
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm test:package
-mkdir -p .archloom/release
-npm pack . --ignore-scripts --pack-destination .archloom/release
-sha512sum .archloom/release/chtah-archloom-0.2.0.tgz
-```
+A deleted and recreated repository needs both steps again.
 
-The pack command skips lifecycle scripts because the build and complete checks
-already ran. `.archloom/` is ignored. The resulting tarball is a local artifact,
-not a registry release. `pnpm test:package` additionally exercises core/browser
-exports, CLI/declarations and optional peers in isolated offline consumers.
+## Prepare the release (pull request)
 
-A publication dry-run may inspect the tarball without uploading it:
+1. Decide the version. Below 1.0, a minor release may change behavior; say so in
+   the changelog.
+2. In one pull request: set `version` in `package.json`, add a `## <version>`
+   section to `CHANGELOG.md`, and update version numbers in the documentation.
+3. Review what will ship. No private data, fictional examples only, the retained
+   upstream MIT copyright and the third-party notices in place.
 
-```bash
-dry_run_config=$(mktemp "${TMPDIR:-/tmp}/archloom-npm-dry-run.XXXXXX")
-npm publish .archloom/release/chtah-archloom-0.2.0.tgz \
-  --dry-run --ignore-scripts --access public --userconfig "$dry_run_config" \
-  --registry https://registry.npmjs.org/
-rm -f -- "$dry_run_config"
-```
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm verify
+   pnpm test:package
+   npm pack . --dry-run --ignore-scripts
+   ```
 
-Do not edit or rebuild the approved artifact after recording its checksum.
-Changes require rebuilding, rechecking and approving the replacement artifact.
+4. Check the registry: the version must not exist yet. A published name and
+   version can never be replaced with different bytes.
 
-## Authenticate and publish (separate explicit approval)
+   ```bash
+   npm view @chtah/archloom versions
+   ```
 
-The owner should approve the exact package, version, checksum, public access and
-registry. Publication uploads all tarball contents to a public registry; a
-published name/version cannot be replaced with different bytes.
+5. Merge the pull request after CI passes.
 
-Use an isolated temporary npm user config outside the repo so personal login
-cannot overwrite a work registry or global credentials:
+## Publish (owner approval)
 
-```bash
-npm_user_config=$(mktemp "${TMPDIR:-/tmp}/archloom-npm.XXXXXX")
-chmod 600 "$npm_user_config"
-npm login --userconfig "$npm_user_config" --registry https://registry.npmjs.org/
-npm whoami --userconfig "$npm_user_config" --registry https://registry.npmjs.org/
-```
+1. Tag the merged commit on `main` and push the tag. This is the step that starts
+   a publication, so it needs the owner's approval for that exact version.
 
-Complete browser sign-in and 2FA privately. `npm whoami` must report `chtah`.
-Never display the config contents or paste an authentication link/code into chat.
-Do not assume account creation, a GitHub identity or a scope string grants access.
-After approval and identity verification, publish the exact checked artifact:
+   ```bash
+   git switch main && git pull --ff-only
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+2. The workflow stops at the `npm` environment. Open the run under Actions,
+   check that the tag and commit are the intended ones, and approve it.
+3. The workflow then refuses to continue unless the tag is a commit on `main`,
+   matches `package.json` and has a changelog section. It runs `pnpm verify` and
+   `pnpm test:package`, packs the checked build, prints its SHA-512, publishes
+   that tarball with provenance, and creates the GitHub release from the
+   changelog section.
+
+## Verify the result
 
 ```bash
-npm publish .archloom/release/chtah-archloom-0.2.0.tgz \
-  --ignore-scripts --access public --userconfig "$npm_user_config" \
-  --registry https://registry.npmjs.org/
+npm view @chtah/archloom@<version> version dist.integrity dist.attestations
 ```
 
-After the operation (including failure), log out of that isolated session and remove its auth file;
-do not remove or change any global/work configuration:
+Check that the version and provenance attestation are present, then install that
+exact version in a fresh directory and run the CLI and an import. Report what was
+actually observed, not only that the workflow was green.
 
-```bash
-npm logout --userconfig "$npm_user_config" --registry https://registry.npmjs.org/
-rm -f -- "$npm_user_config"
-```
+## If something fails
 
-## Verify the public result
-
-Read registry metadata for `@chtah/archloom@0.2.0`, verify version/integrity against
-the approved artifact, and install that exact version in a fresh consumer to run
-API, CLI and browser smoke checks. Report actual results, not just publish output.
-If publication or verification fails, stop and preserve evidence; do not
-unpublish, publish another version or change access/settings without approval.
-Only then document the actual release and propose any separately approved
-Git tag/release or homelab migration. No production changes are part of this guide.
+- **Before publish** (a check or the tag validation fails): fix it through a pull
+  request, delete the tag, and tag the new commit. Nothing reached npm.
+- **After publish**: do not unpublish and do not move the tag. Fix forward with a
+  new version. If only the GitHub release job failed, re-run that job.
+- Do not change package access, npm settings or the environment's rules to get a
+  run through without the owner's approval.
