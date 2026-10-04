@@ -1,0 +1,1 @@
+{ "name": "fleet-telemetry", "private": true, "scripts": { "build": "pnpm -r build", "test": "pnpm -r test" } }

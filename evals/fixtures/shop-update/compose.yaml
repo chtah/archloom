@@ -1,0 +1,31 @@
+services:
+  web:
+    build: ./web
+    environment:
+      API_URL: http://api:8080
+    ports: ['127.0.0.1:3000:3000']
+    depends_on: [api]
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://shop@postgres:5432/shop
+      REDIS_URL: redis://redis:6379
+    depends_on: [postgres, redis]
+  worker:
+    build: ./worker
+    environment:
+      DATABASE_URL: postgres://shop@postgres:5432/shop
+      REDIS_URL: redis://redis:6379
+      NOTIFIER_URL: http://notifier:8090
+    depends_on: [postgres, redis, notifier]
+  notifier:
+    build: ./notifier
+    environment:
+      MAILHOP_URL: https://send.mailhop.example/v1/messages
+  postgres:
+    image: postgres:17
+    volumes: ['pgdata:/var/lib/postgresql/data']
+  redis:
+    image: redis:8
+volumes:
+  pgdata:

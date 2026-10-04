@@ -54,6 +54,7 @@ co-authorship or private session links.
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` | What outside contributors may send, and the issue and pull request forms. |
 | `.github/workflows/dependency-review.yml`, `scorecard.yml`, `.github/dependabot.yml` | Dependency vulnerability review on PRs, weekly OpenSSF Scorecard, and weekly dependency and action update PRs. |
 | `skills/archloom/` | Active installable skill and public graph reference. |
+| `evals/` | Hand-run skill evaluations: fictional fixture codebases, answer keys and a model-free grader (`evals/README.md`). Not shipped in the package. |
 | `examples/`, `docs/archloom/` | Fictional graphs and generated visual assets. |
 
 The public graph contract is `src/graph.ts`, documented in

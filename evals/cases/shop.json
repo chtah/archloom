@@ -1,0 +1,28 @@
+{
+  "id": "shop",
+  "title": "Several services in Docker Compose",
+  "fixture": "shop",
+  "prompt": "Read this codebase and create an Archloom architecture diagram of the system, with one data-flow diagram for placing an order. Save the graph as docs/architecture/shop.archloom.json.",
+  "nodeRange": [7, 9],
+  "components": [
+    { "key": "paygate", "match": ["paygate", "payment", "card"] },
+    { "key": "mailhop", "match": ["mailhop", "email", "mail"] },
+    { "key": "postgres", "match": ["postgres", "database", "db"] },
+    { "key": "redis", "match": ["redis", "queue"] },
+    { "key": "worker", "match": ["worker", "fulfil"] },
+    { "key": "web", "match": ["web", "storefront", "frontend"] },
+    { "key": "api", "match": ["api", "backend"] }
+  ],
+  "optional": [{ "key": "person", "match": ["shopper", "customer", "browser", "user"] }],
+  "edges": [
+    { "from": "web", "to": "api" },
+    { "from": "api", "to": "postgres" },
+    { "from": "api", "to": "paygate" },
+    { "from": "api", "to": "redis" },
+    { "from": "redis", "to": "worker", "either": true },
+    { "from": "worker", "to": "postgres" },
+    { "from": "worker", "to": "mailhop" }
+  ],
+  "forbiddenEdges": [{ "from": "web", "to": ["postgres", "redis", "paygate"] }],
+  "minFlows": 1
+}

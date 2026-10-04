@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "0.1.0",
+  "title": "Parcel Shop",
+  "summary": "A shop: the web app calls the API, which stores orders, takes payment and queues fulfilment for a worker.",
+  "lanes": [
+    { "id": "client", "label": "Client", "summary": "What the shopper uses." },
+    { "id": "services", "label": "Services", "summary": "Code the shop runs." },
+    { "id": "data", "label": "Data", "summary": "State kept by the shop." },
+    { "id": "outside", "label": "Outside providers", "summary": "Services run by other companies." }
+  ],
+  "nodes": [
+    { "id": "storefront", "label": "Web storefront", "lane": "client", "kind": "ui", "summary": "Shows products and places orders." },
+    { "id": "orders-api", "label": "API", "lane": "services", "kind": "service", "summary": "Lists products, creates orders and takes payment." },
+    { "id": "fulfilment-worker", "label": "Worker", "lane": "services", "kind": "job", "summary": "Fulfils paid orders and emails the shopper." },
+    { "id": "shop-db", "label": "PostgreSQL", "lane": "data", "kind": "datastore", "summary": "Products and orders." },
+    { "id": "order-queue", "label": "Redis queue", "lane": "data", "kind": "queue", "summary": "Holds fulfilment jobs for the worker." },
+    { "id": "card-payments", "label": "PayGate", "lane": "outside", "kind": "external", "summary": "Charges cards." },
+    { "id": "email-provider", "label": "MailHop", "lane": "outside", "kind": "external", "summary": "Sends email." }
+  ],
+  "edges": [
+    { "id": "storefront-api", "from": "storefront", "to": "orders-api", "kind": "http", "label": "REST", "summary": "The storefront reads products and posts orders." },
+    { "id": "api-db", "from": "orders-api", "to": "shop-db", "kind": "data", "label": "Read and write", "summary": "The API reads products and writes orders." },
+    { "id": "api-payments", "from": "orders-api", "to": "card-payments", "kind": "http", "label": "Charge card", "summary": "The API charges the card before queueing fulfilment." },
+    { "id": "api-queue", "from": "orders-api", "to": "order-queue", "kind": "queue", "label": "Enqueue fulfil", "summary": "A paid order becomes a fulfilment job." },
+    { "id": "queue-worker", "from": "order-queue", "to": "fulfilment-worker", "kind": "queue", "label": "Deliver job", "summary": "The worker takes jobs from the queue." },
+    { "id": "worker-db", "from": "fulfilment-worker", "to": "shop-db", "kind": "data", "label": "Update order", "summary": "The worker updates the order status." },
+    { "id": "worker-email", "from": "fulfilment-worker", "to": "email-provider", "kind": "http", "label": "Send email", "summary": "The worker sends the confirmation email." }
+  ],
+  "flows": [
+    {
+      "id": "place-order", "title": "Place an order", "summary": "From the Pay button to the confirmation email.",
+      "participants": ["storefront", "orders-api", "shop-db", "card-payments", "order-queue", "fulfilment-worker", "email-provider"],
+      "messages": [
+        { "id": "post", "from": "storefront", "to": "orders-api", "label": "POST /orders", "note": "The shopper presses Pay." },
+        { "id": "insert", "from": "orders-api", "to": "shop-db", "label": "Insert order", "note": "The order is stored as pending." },
+        { "id": "charge", "from": "orders-api", "to": "card-payments", "label": "Charge", "note": "PayGate charges the card." },
+        { "id": "enqueue", "from": "orders-api", "to": "order-queue", "label": "Enqueue fulfil", "kind": "async", "note": "Only paid orders are queued." },
+        { "id": "deliver", "from": "order-queue", "to": "fulfilment-worker", "label": "Job", "kind": "async", "note": "The worker picks the job up." },
+        { "id": "email", "from": "fulfilment-worker", "to": "email-provider", "label": "Send confirmation", "note": "The shopper gets an email." }
+      ]
+    }
+  ]
+}

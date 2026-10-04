@@ -1,0 +1,24 @@
+{
+  "id": "notes",
+  "title": "One process with an in-process scheduled job",
+  "fixture": "notes",
+  "prompt": "Read this codebase and create an Archloom architecture diagram of the system, with one data-flow diagram for the morning digest. Save the graph as docs/architecture/notes.archloom.json.",
+  "nodeRange": [4, 6],
+  "components": [
+    { "key": "skycast", "match": ["skycast", "weather"] },
+    { "key": "postbird", "match": ["postbird", "email", "mail"] },
+    { "key": "sqlite", "match": ["sqlite", "database", "db"] },
+    { "key": "app", "match": ["app", "api", "server", "service", "trail notes", "trail-notes"] }
+  ],
+  "optional": [
+    { "key": "scheduler", "match": ["schedul", "digest", "job", "cron"] },
+    { "key": "person", "match": ["hiker", "browser", "client", "user"] }
+  ],
+  "forbidden": [{ "key": "worker", "match": ["worker", "queue", "broker"], "why": "the job runs inside the app process; there is no worker or queue" }],
+  "edges": [
+    { "from": ["app", "scheduler"], "to": "sqlite" },
+    { "from": ["app", "scheduler"], "to": "skycast" },
+    { "from": ["app", "scheduler"], "to": "postbird" }
+  ],
+  "minFlows": 1
+}
