@@ -3,7 +3,7 @@
 Notable changes to `@chtah/archloom`. Versions follow semantic versioning; while
 the version is below 1.0, a minor release may change behavior.
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
@@ -25,6 +25,12 @@ the version is below 1.0, a minor release may change behavior.
   before a first commit or a comment. New references cover reading a codebase
   and sharing diagrams. `skills/archloom/evals/evals.json` is no longer shipped;
   the evaluations live in the repository's `evals/` directory.
+- Releases are published from a GitHub Actions workflow through npm trusted
+  publishing, so this and later versions carry a provenance attestation.
+- The package description and keywords describe use with coding agents.
+
+`render`, `validate`, `render()`, `renderAll()` and `renderHtml()` are unchanged,
+and the graph `schemaVersion` stays `0.1.0`.
 
 ## 0.2.0
 

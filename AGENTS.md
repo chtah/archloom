@@ -11,7 +11,7 @@ provider or PR integration in the public API. Do not add those dependencies as
 incidental features. Public input has no PR fields.
 
 The root package is `@chtah/archloom`, using the maintainer's personal npm scope;
-`0.2.0` is the latest release. Check the registry version before every approved
+`0.3.0` is the current release target. Check the registry version before every approved
 publication; neither the version field nor a merge proves publication. Private schema and renderer workspaces retain
 `@coldtea/pr-lens-*` names for compatibility; they are not separate Archloom
 releases.
