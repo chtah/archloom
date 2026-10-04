@@ -31,6 +31,18 @@ separately sanitized graph before generating public artifacts. Local files can
 still be read by anyone with filesystem access or by a recipient you share them
 with; Archloom does not encrypt them or manage access permissions.
 
+## When an agent writes the graph
+
+An agent reading a codebase can copy what it finds into labels and summaries:
+internal hostnames, bucket and account names, customer names. The graph file
+holds all of it, and committing the graph publishes all of it. The Archloom
+skill tells agents to leave out secrets and personal data, to ask before
+including internal identifiers, to show every label and summary and wait for
+agreement before the first commit or before a comment, and to commit only the
+graph and the SVGs from `archloom markdown`, never `index.html` or `atlas.json`.
+Those are instructions to the agent, not enforcement: read the graph yourself
+before it is committed.
+
 Do not include credentials, private endpoints, customer data or sensitive
 infrastructure descriptions in public graphs, screenshots, demos or bug reports.
 The repository's public examples describe fictional systems.

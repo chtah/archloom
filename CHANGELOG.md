@@ -16,6 +16,16 @@ the version is below 1.0, a minor release may change behavior.
   library.
 - `ArchloomError` has a new code, `STALE_OUTPUT`.
 
+### Changed
+
+- The agent skill is rewritten around reading a codebase: it looks for an
+  existing `*.archloom.json` first, takes evidence from what declares and runs
+  the system, draws only things that run or store on their own, updates a graph
+  in place with stable IDs, and confirms labels and summaries with the user
+  before a first commit or a comment. New references cover reading a codebase
+  and sharing diagrams. `skills/archloom/evals/evals.json` is no longer shipped;
+  the evaluations live in the repository's `evals/` directory.
+
 ## 0.2.0
 
 ### Changed

@@ -15,9 +15,11 @@ describe("distributed Archloom authoring skill", () => {
     for (const match of text.matchAll(/\]\(([^)]+)\)/g)) {
       expect((await stat(resolve(dirname(skillPath), match[1]!))).isFile()).toBe(true);
     }
-    expect(text).toContain("archloom validate system.archloom.json");
-    expect(text).toContain("archloom render system.archloom.json");
+    expect(text).toContain("archloom validate docs/architecture/system.archloom.json");
+    expect(text).toContain("archloom markdown docs/architecture/system.archloom.json");
+    expect(text).toContain("archloom render docs/architecture/system.archloom.json --out .archloom/system");
     expect(text).toContain("without separate approval");
+    for (const reference of ["references/graph.md", "references/reading-a-codebase.md", "references/sharing.md"]) expect(text).toContain(`](${reference})`);
     expect(text).not.toMatch(/prlens\.dev|npx\s+@coldtea|push-canvas/);
   });
 
