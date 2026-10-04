@@ -114,8 +114,10 @@ pnpm verify
 
 `pnpm verify` builds, type-checks and runs the unit and browser tests. The browser
 tests need a local Chromium-based browser; point `CHROME_BIN` at its executable.
-[AGENTS.md](AGENTS.md) has the repository map and contribution rules, and
-[docs/releasing.md](docs/releasing.md) the release checklist.
+[CONTRIBUTING.md](CONTRIBUTING.md) says which changes need an issue first,
+[AGENTS.md](AGENTS.md) has the repository map and implementation rules, and
+[docs/releasing.md](docs/releasing.md) the release checklist. Participation is
+covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Credits and license
 

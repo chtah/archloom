@@ -2,8 +2,8 @@
 
 Archloom is a local ESM library and CLI with an offline, read-only viewer. There
 is no Archloom backend, hosted canvas, model integration or graph-upload service.
-Historical upstream integrations are inactive and not distributed with the root
-package. Their contacts and hosted-service policies are not Archloom resources.
+The contacts and hosted-service policies of PR Lens, the upstream project, are
+not Archloom resources.
 
 ## Input and output boundaries
 
