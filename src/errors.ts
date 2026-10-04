@@ -6,6 +6,7 @@ export type ErrorCode =
   | "UNKNOWN_ICON"
   | "INVALID_ICON"
   | "OUTPUT_EXISTS"
+  | "STALE_OUTPUT"
   | "IO_ERROR"
   | "USAGE";
 

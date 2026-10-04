@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { constants, realpathSync } from "node:fs";
-import { mkdir, open, lstat } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { mkdir, open, lstat, readFile } from "node:fs/promises";
+import { resolve, join, dirname, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import packageInfo from "../package.json" with { type: "json" };
 import { ArchloomError } from "./errors.js";
 import { parseGraph, ThemeSchema } from "./graph.js";
 import { renderAll } from "./render.js";
+import { renderMarkdown } from "./markdown.js";
 import { combineIconResolvers, type IconResolver } from "./icons.js";
 import { renderHtml } from "./viewer.js";
 
@@ -17,11 +18,17 @@ const HELP = `Archloom — local architecture and data-flow diagrams
 Usage:
   archloom validate <graph.json>
   archloom render <graph.json> [--out <directory>] [--theme dark|light] [--icons lucide|simple-icons|both] [--force]
+  archloom markdown <graph.json> [--out <directory>] [--base <path-or-url>] [--icons lucide|simple-icons|both] [--force] [--check]
   archloom --help
   archloom --version
 
 Render writes one SVG per view, atlas.json and an offline index.html canvas.
 Default directory: .archloom. Open index.html directly in a browser.
+Markdown writes <view>.light.svg and <view>.dark.svg only, and prints a <picture>
+snippet per view for a Markdown file or a comment. Default directory: the graph's.
+--base sets the image path prefix in the snippet; default: the output directory
+relative to the current directory. --check writes nothing and fails when the SVGs
+on disk differ from a fresh render.
 No graph uploads, model providers, or PR integrations.
 Icon packs are optional local peer packages; nothing is downloaded automatically.
 --force overwrites generated files only; it never deletes the output directory.
@@ -74,12 +81,44 @@ const existing = async (path: string) => {
   }
 };
 
+type Artifact = { name: string; content: string };
+const writeArtifacts = async (out: string, artifacts: Artifact[], force: boolean) => {
+  const directory = await existing(out);
+  if (directory !== undefined && !directory.isDirectory()) throw new ArchloomError("IO_ERROR", "output must be a directory, not a file or symlink");
+  for (const artifact of artifacts) {
+    if (RESERVED_NAME.test(artifact.name)) throw new ArchloomError("IO_ERROR", "a view ID is a reserved device name on Windows; rename the view");
+    const found = await existing(join(out, artifact.name));
+    if (found === undefined) continue;
+    if (!found.isFile()) throw new ArchloomError("IO_ERROR", "refusing to overwrite a symlink or non-file artifact");
+    if (!force) throw new ArchloomError("OUTPUT_EXISTS", "output exists; choose another directory or use --force");
+  }
+  await mkdir(out, { recursive: true });
+  // The checks above can race a swapped-in symlink; never write through one.
+  const flags = constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (force ? constants.O_TRUNC : constants.O_EXCL);
+  for (const artifact of artifacts) {
+    const file = await open(join(out, artifact.name), flags, 0o666);
+    try { await file.writeFile(artifact.content); } finally { await file.close(); }
+  }
+};
+
+const staleArtifacts = async (out: string, artifacts: Artifact[]) => {
+  const issues: Array<{ path: string; message: string }> = [];
+  for (const artifact of artifacts) {
+    const found = await existing(join(out, artifact.name));
+    if (found === undefined) issues.push({ path: artifact.name, message: "missing" });
+    else if (!found.isFile() || (await readFile(join(out, artifact.name), "utf8")) !== artifact.content)
+      issues.push({ path: artifact.name, message: "differs from a fresh render" });
+  }
+  return issues;
+};
+
 export const main = async (args: string[]): Promise<number> => {
   try {
     let parsed: ReturnType<typeof parseArgs>;
     try {
       parsed = parseArgs({ args, allowPositionals: true, strict: true, options: {
         out: { type: "string", short: "o" }, theme: { type: "string" }, icons: { type: "string" }, force: { type: "boolean" },
+        base: { type: "string" }, check: { type: "boolean" },
         help: { type: "boolean", short: "h" }, version: { type: "boolean", short: "v" },
       } });
     } catch (error) {
@@ -89,10 +128,14 @@ export const main = async (args: string[]): Promise<number> => {
     if (values.help === true) { process.stdout.write(HELP); return 0; }
     if (values.version === true) { process.stdout.write(`${packageInfo.version}\n`); return 0; }
     const [command, fileName] = positionals;
-    if ((command !== "validate" && command !== "render") || fileName === undefined || positionals.length !== 2)
-      throw new ArchloomError("USAGE", "use 'validate <graph.json>' or 'render <graph.json>'; see --help");
+    if ((command !== "validate" && command !== "render" && command !== "markdown") || fileName === undefined || positionals.length !== 2)
+      throw new ArchloomError("USAGE", "use 'validate <graph.json>', 'render <graph.json>' or 'markdown <graph.json>'; see --help");
     if (command === "validate" && (values.out !== undefined || values.theme !== undefined || values.icons !== undefined || values.force !== undefined))
       throw new ArchloomError("USAGE", "render options do not apply to validate");
+    if (command !== "markdown" && (values.base !== undefined || values.check !== undefined))
+      throw new ArchloomError("USAGE", "--base and --check apply to markdown only");
+    if (command === "markdown" && values.theme !== undefined) throw new ArchloomError("USAGE", "markdown always writes both themes; omit --theme");
+    if (values.check === true && values.force === true) throw new ArchloomError("USAGE", "--check writes nothing; omit --force");
     const theme = ThemeSchema.safeParse(values.theme ?? "dark");
     if (!theme.success) throw new ArchloomError("USAGE", "--theme must be dark or light");
     const graph = await readGraph(resolve(fileName));
@@ -101,33 +144,34 @@ export const main = async (args: string[]): Promise<number> => {
       return 0;
     }
     if (values.out === "") throw new ArchloomError("USAGE", "--out must name a directory");
-    const out = resolve(typeof values.out === "string" ? values.out : ".archloom");
-    const directory = await existing(out);
-    if (directory !== undefined && !directory.isDirectory()) throw new ArchloomError("IO_ERROR", "output must be a directory, not a file or symlink");
     const icons = await loadIcons(values.icons);
+    if (command === "markdown") {
+      const out = resolve(typeof values.out === "string" ? values.out : dirname(resolve(fileName)));
+      const base = typeof values.base === "string" ? values.base : relative(process.cwd(), out).split(sep).join("/");
+      const images = renderMarkdown(graph, { icons, base });
+      const artifacts = images.flatMap((image) => [{ name: image.light.file, content: image.light.svg }, { name: image.dark.file, content: image.dark.svg }]);
+      if (values.check === true) {
+        const stale = await staleArtifacts(out, artifacts);
+        if (stale.length > 0) throw new ArchloomError("STALE_OUTPUT", `${stale.length} of ${artifacts.length} SVGs do not match the graph; run 'archloom markdown' with --force`, stale);
+        process.stderr.write(`Checked ${artifacts.length} SVGs in ${JSON.stringify(out)}: up to date\n`);
+        return 0;
+      }
+      await writeArtifacts(out, artifacts, values.force === true);
+      // Only the snippet goes to stdout, so it can be piped into a file or a comment.
+      process.stdout.write(`${images.map((image) => image.markdown).join("\n\n")}\n`);
+      process.stderr.write(`Wrote ${artifacts.length} SVGs to ${JSON.stringify(out)}\n`);
+      return 0;
+    }
+    const out = resolve(typeof values.out === "string" ? values.out : ".archloom");
     const diagrams = renderAll(graph, { theme: theme.data, icons });
-    const artifacts = diagrams.map((diagram) => ({ name: `${diagram.id}.svg`, content: diagram.svg }));
+    const artifacts: Artifact[] = diagrams.map((diagram) => ({ name: `${diagram.id}.svg`, content: diagram.svg }));
     const atlas = {
       schemaVersion: "0.1.0", kind: "atlas", graph,
       diagrams: diagrams.map(({ svg: _svg, ...diagram }) => ({ ...diagram, file: `${diagram.id}.svg` })),
     };
     artifacts.push({ name: "atlas.json", content: `${JSON.stringify(atlas, null, 2)}\n` });
     artifacts.push({ name: "index.html", content: renderHtml(graph, { theme: theme.data, icons }) });
-    for (const artifact of artifacts) {
-      if (RESERVED_NAME.test(artifact.name)) throw new ArchloomError("IO_ERROR", "a view ID is a reserved device name on Windows; rename the view");
-      const path = join(out, artifact.name);
-      const found = await existing(path);
-      if (found === undefined) continue;
-      if (!found.isFile()) throw new ArchloomError("IO_ERROR", "refusing to overwrite a symlink or non-file artifact");
-      if (values.force !== true) throw new ArchloomError("OUTPUT_EXISTS", "output exists; choose another directory or use --force");
-    }
-    await mkdir(out, { recursive: true });
-    // The checks above can race a swapped-in symlink; never write through one.
-    const flags = constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (values.force === true ? constants.O_TRUNC : constants.O_EXCL);
-    for (const artifact of artifacts) {
-      const file = await open(join(out, artifact.name), flags, 0o666);
-      try { await file.writeFile(artifact.content); } finally { await file.close(); }
-    }
+    await writeArtifacts(out, artifacts, values.force === true);
     process.stdout.write(`Rendered ${diagrams.length} SVGs, atlas.json and index.html to ${JSON.stringify(out)}\n`);
     return 0;
   } catch (error) {

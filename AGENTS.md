@@ -39,6 +39,7 @@ co-authorship or private session links.
 | `src/index.ts` | Public library exports. |
 | `src/graph.ts`, `src/errors.ts` | Public graph validation, limits, types and errors. |
 | `src/render.ts`, `src/internal/adapter.ts` | Public render API, scoped styling, atlas and private-engine translation. |
+| `src/markdown.ts` | Both-theme SVG pairs and the `<picture>` snippet for Markdown and comments. |
 | `src/cli.ts` | Local validation and artifact writing. |
 | `src/browser.ts` | Native browser mounting, isolated iframe and update/destroy lifecycle. |
 | `src/icons.ts`, `src/icons/` | Structured icon validation and lazy optional peer adapters. |

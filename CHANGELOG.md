@@ -3,6 +3,19 @@
 Notable changes to `@chtah/archloom`. Versions follow semantic versioning; while
 the version is below 1.0, a minor release may change behavior.
 
+## Unreleased
+
+### Added
+
+- `archloom markdown <graph.json>` writes `<view>.light.svg` and `<view>.dark.svg`
+  and prints a `<picture>` snippet per view that follows the reader's colour
+  scheme, for Markdown files and comments. It writes no `index.html` or
+  `atlas.json`. `--base` sets the image path prefix, and `--check` fails with
+  `STALE_OUTPUT` when the SVGs on disk differ from a fresh render.
+- `renderMarkdown(input, options?)` returns the same images and snippets from the
+  library.
+- `ArchloomError` has a new code, `STALE_OUTPUT`.
+
 ## 0.2.0
 
 ### Changed

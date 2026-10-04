@@ -16,6 +16,7 @@ Archloom is ESM only. The package entry points are:
 | `parseGraph(input)` | Validate unknown input and return a graph with defaults applied. |
 | `render(input, options?)` | Render one diagram. Options: `lens`, `view`, `theme`, `icons`. A given view and lens must agree. |
 | `renderAll(input, options?)` | Render all named or default views. Options: `theme`, `icons`. |
+| `renderMarkdown(input, options?)` | Render every view in both themes with a `<picture>` snippet each; see [Markdown](markdown.md). Options: `base`, `icons`. |
 | `renderHtml(input, options?)` | Return a self-contained canvas holding both themes. Options: initial `theme`, `icons`. |
 | `combineIconResolvers(...resolvers)` | Combine icon resolvers; the first match wins. |
 | `ArchloomError` | Error with a stable `code` and validation `issues` carrying paths and messages. |

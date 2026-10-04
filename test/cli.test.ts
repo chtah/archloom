@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,57 @@ describe("offline CLI", () => {
     expect(run("validate", "system.json", "--force").stderr).toContain("USAGE");
     expect(run("render", "system.json", "--out", "").stderr).toContain("USAGE");
     expect(run("--help").stdout).not.toContain("https://prlens.dev");
+  });
+
+  it("writes both themes for Markdown and prints only the snippet on stdout", async () => {
+    const result = run("markdown", "system.json", "--out", "docs/architecture");
+    expect(result.status).toBe(0);
+    expect((await readdir(join(directory, "docs", "architecture"))).sort()).toEqual([
+      "architecture.dark.svg", "architecture.light.svg", "flow-load-records.dark.svg", "flow-load-records.light.svg",
+    ]);
+    expect(result.stdout.match(/<picture>/g)).toHaveLength(2);
+    expect(result.stdout).toContain('srcset="docs/architecture/architecture.dark.svg"');
+    expect(result.stdout).toContain('src="docs/architecture/flow-load-records.light.svg"');
+    expect(result.stdout).not.toContain("Wrote");
+    expect(result.stderr).toContain("Wrote 4 SVGs");
+    const based = run("markdown", "system.json", "--out", "docs/architecture", "--force", "--base", "../architecture");
+    expect(based.stdout).toContain('src="../architecture/architecture.light.svg"');
+  });
+
+  it("defaults the Markdown output to the graph's directory and refuses overwrite without --force", async () => {
+    await mkdir(join(directory, "docs"));
+    await writeFile(join(directory, "docs", "system.archloom.json"), JSON.stringify(webSystem));
+    const result = run("markdown", "docs/system.archloom.json");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('src="docs/architecture.light.svg"');
+    expect((await readdir(join(directory, "docs"))).sort()).toContain("architecture.dark.svg");
+    expect(run("markdown", "docs/system.archloom.json").stderr).toContain("OUTPUT_EXISTS");
+    expect(run("markdown", "docs/system.archloom.json", "--force").status).toBe(0);
+  });
+
+  it("checks committed SVGs against a fresh render without writing", async () => {
+    const missing = run("markdown", "system.json", "--out", "out", "--check");
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("STALE_OUTPUT");
+    expect(missing.stderr).toContain("architecture.light.svg: missing");
+    expect(missing.stdout).toBe("");
+    await expect(readdir(join(directory, "out"))).rejects.toThrow();
+    expect(run("markdown", "system.json", "--out", "out").status).toBe(0);
+    const fresh = run("markdown", "system.json", "--out", "out", "--check");
+    expect(fresh.status).toBe(0);
+    expect(fresh.stdout).toBe("");
+    await writeFile(join(directory, "system.json"), JSON.stringify({ ...webSystem, title: "Renamed system" }));
+    const stale = run("markdown", "system.json", "--out", "out", "--check");
+    expect(stale.status).toBe(1);
+    expect(stale.stderr).toContain("architecture.dark.svg: differs from a fresh render");
+  });
+
+  it("rejects options that do not belong to the command", () => {
+    expect(run("markdown", "system.json", "--theme", "dark").stderr).toContain("USAGE");
+    expect(run("markdown", "system.json", "--check", "--force").stderr).toContain("USAGE");
+    expect(run("render", "system.json", "--check").stderr).toContain("USAGE");
+    expect(run("validate", "system.json", "--base", "x").stderr).toContain("USAGE");
+    expect(run("markdown", "system.json", "--base", "my docs").stderr).toContain("INVALID_OPTIONS");
   });
 
   it.skipIf(process.platform === "win32")("rejects named FIFO inputs without waiting for a writer", async () => {
