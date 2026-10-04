@@ -11,3 +11,4 @@ export {
   render, renderAll, type RenderOptions, type RenderAllOptions,
   type Diagram, type DiagramAtlas, type Box, type Line,
 } from "./render.js";
+export { renderMarkdown, type MarkdownOptions, type MarkdownImage } from "./markdown.js";

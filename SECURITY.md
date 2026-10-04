@@ -33,7 +33,8 @@ to generated output, not arbitrary HTML edits, compromised dependencies or a
 consuming application's own code.
 
 The CLI refuses existing output artifacts unless `--force` is requested and
-rejects detected symlink/non-file artifacts. `--force` overwrites generated
+rejects detected symlink/non-file artifacts. `markdown --check` reads the SVGs
+it would write and writes nothing. `--force` overwrites generated
 files, not the entire output directory. Use output directories you control;
 these checks are not a filesystem sandbox or a guarantee against concurrent
 filesystem changes.

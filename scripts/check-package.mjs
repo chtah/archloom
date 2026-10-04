@@ -51,6 +51,8 @@ console.log(run(process.execPath, ['smoke.mjs'], consumer).trim());
 assert.equal(run(join(consumer, 'node_modules/.bin/archloom'), ['--version'], consumer).trim(), manifest.version);
 console.log(run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'validate', 'graph.json'], consumer).trim());
 console.log(run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'render', 'graph.json', '--out', 'output'], consumer).trim());
+assert.match(run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'markdown', 'graph.json', '--out', 'images'], consumer), /<img alt="[^"]+" src="images\/architecture\.light\.svg">/);
+run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'markdown', 'graph.json', '--out', 'images', '--check'], consumer);
 await writeFile(join(consumer, 'smoke.ts'), `import {parseGraph,render,renderHtml,combineIconResolvers,type GraphInput,type DiagramAtlas,type IconAsset} from '@chtah/archloom';
 import {createLucideResolver} from '@chtah/archloom/icons/lucide';
 import {createSimpleIconsResolver} from '@chtah/archloom/icons/simple-icons';

@@ -48,6 +48,13 @@ Open `diagrams/index.html` in a browser; no server is needed. The directory also
 holds one SVG per view and `atlas.json`. Options: `--theme dark|light`,
 `--icons lucide|simple-icons|both`, `--force`.
 
+To put a diagram in a README or a comment, write light and dark SVGs and print
+a snippet that follows the reader's theme; see [Markdown](docs/markdown.md):
+
+```bash
+npx archloom markdown graph.json --out docs/architecture
+```
+
 The full format is in the [graph reference](skills/archloom/references/graph.md)
 and the [JSON Schema](schema/graph.schema.json). A larger example lives in
 [`examples/`](examples/web-system.archloom.json).
@@ -67,6 +74,7 @@ const html = renderHtml(graph); // the self-contained canvas
 | `parseGraph(input)` | Validate input and return a graph with defaults applied. |
 | `render(input, options?)` | Render one diagram to SVG. |
 | `renderAll(input, options?)` | Render every view. |
+| `renderMarkdown(input, options?)` | Render every view in both themes, with a Markdown snippet each. |
 | `renderHtml(input, options?)` | Return the offline canvas as one HTML string. |
 | `ArchloomError` | Error with a stable `code` and validation `issues`. |
 

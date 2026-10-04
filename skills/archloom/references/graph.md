@@ -118,7 +118,8 @@ reserved: it has no effect yet, and diagrams are always laid out left to right.
 views, 8 view nesting levels. CLI input files are capped at 4 MiB. Prefer much
 smaller diagrams for comprehension, not just staying below the caps.
 
-Render output: `<view-id>.svg`, `atlas.json`, `index.html`. The atlas includes
+Render output: `<view-id>.svg`, `atlas.json`, `index.html`. Markdown output
+(`archloom markdown`): `<view-id>.light.svg` and `<view-id>.dark.svg` only. The atlas includes
 final node/lane boxes, individual repeated-flow node instances, raw line paths
 and label pills plus their canvas translation. No PR fields are present.
 HTML is self-contained, read-only, includes both themes and a deny-by-default
