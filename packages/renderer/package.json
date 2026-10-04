@@ -51,7 +51,7 @@
     "@coldtea/pr-lens-schema": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.19.0",
+    "@types/node": "^26.6.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }
