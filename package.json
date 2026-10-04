@@ -71,7 +71,7 @@
     "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   },
   "peerDependencies": {
     "lucide": "^1.51.0",
