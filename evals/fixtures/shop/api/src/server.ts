@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { Pool } from 'pg';
 import { Queue } from 'bullmq';
 import { charge } from './paygate';
@@ -7,6 +8,7 @@ const db = new Pool({ connectionString: process.env.DATABASE_URL });
 const orders = new Queue('orders', { connection: { url: process.env.REDIS_URL } });
 const app = express();
 app.use(express.json());
+app.use(rateLimit({ windowMs: 60_000, limit: 120 }));
 
 app.get('/products', async (_request, response) => {
   response.json((await db.query('select id, name, price_cents from products')).rows);
