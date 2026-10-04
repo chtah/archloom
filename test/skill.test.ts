@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseGraph } from "../src/graph.js";
 import { renderAll } from "../src/render.js";
+import { renderMarkdown } from "../src/markdown.js";
 import { renderHtml } from "../src/viewer.js";
 
 const skillPath = resolve("skills/archloom/SKILL.md");
@@ -21,6 +22,14 @@ describe("distributed Archloom authoring skill", () => {
     expect(text).toContain("without separate approval");
     for (const reference of ["references/graph.md", "references/reading-a-codebase.md", "references/sharing.md"]) expect(text).toContain(`](${reference})`);
     expect(text).not.toMatch(/prlens\.dev|npx\s+@coldtea|push-canvas/);
+  });
+
+  it("keeps the example's committed images equal to a fresh render", async () => {
+    const graph = JSON.parse(await readFile("examples/web-system.archloom.json", "utf8"));
+    for (const image of renderMarkdown(graph)) {
+      expect(await readFile(`examples/${image.light.file}`, "utf8")).toBe(image.light.svg);
+      expect(await readFile(`examples/${image.dark.file}`, "utf8")).toBe(image.dark.svg);
+    }
   });
 
   it("ships the canonical fictional example, valid and renderable without optional peers", async () => {

@@ -1,7 +1,7 @@
 {
   "name": "@chtah/archloom",
   "version": "0.2.0",
-  "description": "Architecture and data-flow diagrams from JSON, with an offline interactive canvas",
+  "description": "A skill and CLI for coding agents to draw a codebase's architecture and data flow, as SVG and an offline canvas",
   "license": "MIT",
   "author": "chtah",
   "repository": {
@@ -15,7 +15,9 @@
     "data-flow",
     "svg",
     "canvas",
-    "agent-skills"
+    "agent-skills",
+    "ai-agents",
+    "markdown"
   ],
   "type": "module",
   "sideEffects": false,

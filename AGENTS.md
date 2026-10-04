@@ -55,7 +55,7 @@ co-authorship or private session links.
 | `.github/workflows/dependency-review.yml`, `scorecard.yml`, `.github/dependabot.yml` | Dependency vulnerability review on PRs, weekly OpenSSF Scorecard, and weekly dependency and action update PRs. |
 | `skills/archloom/` | Active installable skill and public graph reference. |
 | `evals/` | Hand-run skill evaluations: fictional fixture codebases, answer keys and a model-free grader (`evals/README.md`). Not shipped in the package. |
-| `examples/`, `docs/archloom/` | Fictional graphs and generated visual assets. |
+| `examples/`, `docs/archloom/` | Fictional graphs and generated visual assets. The SVGs in `examples/` are embedded in `README.md`; regenerate them with `archloom markdown examples/web-system.archloom.json --force` (a test fails when they are stale). |
 
 The public graph contract is `src/graph.ts`, documented in
 `skills/archloom/references/graph.md`; it is not the private engine's PR-era schema.
