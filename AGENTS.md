@@ -11,9 +11,8 @@ provider or PR integration in the public API. Do not add those dependencies as
 incidental features. Public input has no PR fields.
 
 The root package is `@chtah/archloom`, using the maintainer's personal npm scope;
-`0.2.0` is the current release target. Confirm authenticated npm identity and the
-registry version before every approved publication; neither the version field
-nor a merge proves publication. Private schema and renderer workspaces retain
+`0.2.0` is the latest release. Check the registry version before every approved
+publication; neither the version field nor a merge proves publication. Private schema and renderer workspaces retain
 `@coldtea/pr-lens-*` names for compatibility; they are not separate Archloom
 releases.
 
@@ -50,6 +49,7 @@ co-authorship or private session links.
 | `test/`, engine `test/` directories | Public and private-engine regression tests. |
 | `scripts/test-browser.mjs`, `scripts/test-embed.mjs` | Local Chrome checks of native popup, browser mounting and real viewer. |
 | `.github/workflows/ci.yml` | PR/main checks with Node 24, locked dependencies, Chrome and packed consumers; no publication or deploy. |
+| `.github/workflows/release.yml` | The only workflow that publishes: on a `v*` tag, after the owner approves the `npm` environment, it re-runs the checks, publishes to npm through trusted publishing and creates the GitHub release. |
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` | What outside contributors may send, and the issue and pull request forms. |
 | `.github/workflows/dependency-review.yml`, `scorecard.yml`, `.github/dependabot.yml` | Dependency vulnerability review on PRs, weekly OpenSSF Scorecard, and weekly dependency and action update PRs. |
 | `skills/archloom/` | Active installable skill and public graph reference. |
@@ -115,6 +115,12 @@ pinned to reviewed commit SHAs, repository permissions read-only and checkout
 credentials non-persistent. Never execute PR code with `pull_request_target`,
 introduce secrets or add publishing/deployment to this check-only workflow.
 
+`release.yml` is the only place that publishes. Keep it triggered by `v*` tags
+only, gated by the `npm` environment, without a stored npm token (it uses OIDC),
+and with `id-token: write` and `contents: write` scoped to the one job that needs
+each. Do not add another trigger, a second publishing path or a step that pushes
+commits or tags.
+
 For behavior changes, add regressions and exercise the public API or CLI. For
 visual changes, inspect architecture and data-flow output in both themes, including
 labels, routing, repeated headings, selection geometry and reduced-motion behavior.
@@ -139,12 +145,12 @@ public availability and package-level CC0 do not clear brand rights. Do not reus
 upstream hosted-service policies or security contacts as Archloom resources.
 Keep this file tool-neutral; `CLAUDE.md` points here.
 
-Follow `docs/releasing.md` for release preparation. Before any explicitly
-approved publication, confirm authenticated npm identity, scope ownership,
-metadata, version, packed contents, licenses and reporting setup. Keep npm auth
-in an isolated temporary user config outside the repository, never in a tracked
-file or chat, and do not change a work registry or global credentials. Publishing
-requires separate approval for the exact name, version, artifact and public access.
+Follow `docs/releasing.md` for releases. A release is published by the release
+workflow, not from a workstation: do not run `npm publish` or `npm login`
+locally, and never put npm credentials in a tracked file, a repository secret or
+chat. Pushing a `v*` tag starts a publication, so it requires the owner's
+approval for the exact version, as does approving the `npm` environment. Before
+that, confirm metadata, version, packed contents, licenses and reporting setup.
 A `publishConfig` field is neither evidence of publication nor permission to publish.
 
 ## Handoff
