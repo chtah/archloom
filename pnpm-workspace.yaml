@@ -3,3 +3,7 @@ packages:
   - 'packages/renderer'
 onlyBuiltDependencies:
   - esbuild
+# tsup depends on esbuild 0.27, which has no fix for GHSA-g7r4-m6w7-qqqr; use the
+# patched line everywhere. Remove once tsup depends on esbuild >= 0.28.1.
+overrides:
+  esbuild: 0.28.2
