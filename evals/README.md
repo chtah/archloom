@@ -81,3 +81,9 @@ and the pass count, with a note on any failure.
 
 | Date | Skill | Agent | Passed | Notes |
 | --- | --- | --- | --- | --- |
+| 2026-10-04 | `48ac0ef` (0.2.0 skill) | Claude Code subagents, Claude Opus 5.5 | 6 of 7 | `notes` failed: 8 nodes for a one-process app; the scheduler, the digest function and a forecast client were drawn as nodes. |
+| 2026-10-04 | Rewritten skill with the codebase and sharing references | Claude Code subagents, Claude Opus 5.5 | 7 of 7 | `notes` passed with 5 nodes. One run per case; the agents were told nobody could answer questions. |
+
+Both rows are single runs on small fixtures by one model. They show that the
+rewrite fixed the over-splitting seen in `notes`; they do not show how either
+version behaves on a large repository or with another agent.
