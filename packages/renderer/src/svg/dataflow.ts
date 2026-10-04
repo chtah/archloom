@@ -1,0 +1,513 @@
+import { assertNever } from "@coldtea/pr-lens-schema";
+import type { Flow, FlowMessage, GraphNode, MessageKind } from "@coldtea/pr-lens-schema";
+import { measure } from "../text.js";
+import { colourMarker, currentStyle } from "../style.js";
+import { coord } from "../geometry.js";
+import type { Box } from "../geometry.js";
+import type { Palette } from "../theme.js";
+import { lines, tag, wrap } from "./primitives.js";
+import { PULSE_RADIUS, TRAIN_RADIUS } from "./pulse.js";
+import { messageAttributes, stylesFor } from "./styles.js";
+import { paintCard, paintLabelPill } from "./architecture.js";
+import { atlasBox, atlasBoxes, emptyAtlas, type RenderAtlas } from "../atlas.js";
+import { canvasFor, covering, union, type Canvas } from "../bounds.js";
+import { markerFor, openMarkerFor, shifted, toneColour, toneFor, type Tone } from "./document.js";
+import {
+  DIAGRAM_MARGIN,
+  FLOW_CYCLE_MAX,
+  FLOW_MAX_PULSES_PER_MESSAGE,
+  FLOW_PULSE_RAMP,
+  FLOW_STEP_TRAVEL,
+  LANE_RADIUS,
+  PILL_HEIGHT,
+  PILL_PADDING_X,
+  PILL_TEXT_SIZE,
+  TITLE_SIZE,
+} from "../design.js";
+import {
+  ACTIVATION_HALF_WIDTH,
+  FLOW_BAND_PAD_X,
+  FLOW_BAND_PAD_Y,
+  layoutDataFlow,
+  MARKER_INSET,
+  messagePitch,
+  PARTICIPANT_TOP,
+  SELF_LOOP_CORNER,
+  SELF_LOOP_DROP,
+  SELF_LOOP_EXTENT,
+  SELF_LOOP_REACH,
+  type FlowLayout,
+  type PlacedMessage,
+} from "../layout/dataflow.js";
+
+/** A ratio inside the animation cycle, written to a fixed number of places. */
+const ratio = (value: number): string => String(Math.round(value * 10000) / 10000);
+
+/**
+ * How long the whole sequence takes. Every step would rather have a full
+ * crossing to itself; a flow long enough to overrun the ceiling shares it
+ * instead, and its steps go by faster.
+ */
+const cycleFor = (slotCount: number): number =>
+  Math.min(FLOW_CYCLE_MAX, slotCount * FLOW_STEP_TRAVEL);
+
+/** Whether a message crosses to another column, and which way. */
+const travelDirection = (kind: MessageKind, fromX: number, toX: number): -1 | 0 | 1 => {
+  switch (kind) {
+    case "self":
+      return 0;
+    case "sync":
+    case "async":
+    case "return":
+      return toX >= fromX ? 1 : -1;
+    default:
+      return assertNever(kind, "Unhandled message kind");
+  }
+};
+
+const messageClasses = (message: FlowMessage, tone: Tone): string => {
+  const classes = ["msg", `edge-${tone}`];
+  if (message.kind === "return") classes.push("msg-return");
+  if (message.delta === "added") classes.push("msg-strong");
+  return classes.join(" ");
+};
+
+/**
+ * Fire-and-forget gets the open head; everything else keeps the filled one.
+ *
+ * Deliberate deviation from strict UML 2, which draws replies with an open
+ * head as well: here each signal carries exactly one meaning, so a reader
+ * needs no legend. The dashed stroke is already the whole mark of "this is
+ * an answer", and the open head stays the exclusive mark of "nobody waits on
+ * this". Open-headed returns would put the async signature on every reply
+ * and dilute the one distinction the head shape exists to draw.
+ */
+const headFor = (kind: MessageKind, tone: Tone): string => {
+  switch (kind) {
+    case "async":
+      return openMarkerFor(tone);
+    case "sync":
+    case "return":
+    case "self":
+      return markerFor(tone);
+    default:
+      return assertNever(kind, "Unhandled message kind");
+  }
+};
+
+/** Whether an activation bar covers this column at this height. */
+type ActiveAt = (node: string, y: number) => boolean;
+
+const activationLookup = (layout: FlowLayout): ActiveAt => {
+  const byNode = new Map(
+    layout.participants.map((participant) => [participant.node.id, participant.activations]),
+  );
+  return (node, y) =>
+    (byNode.get(node) ?? []).some((bar) => bar.top <= y && y <= bar.bottom);
+};
+
+type Ends = { start: number; end: number };
+
+/**
+ * Where an arrow starts and stops horizontally. An activated column is a bar,
+ * not a line, so an arrow that touches one has to stop at its edge, and the
+ * arrowhead needs room of its own on top of that.
+ */
+const endsFor = (
+  placed: PlacedMessage,
+  activeAt: ActiveAt,
+  direction: -1 | 1,
+): Ends => ({
+  start:
+    placed.fromX +
+    direction * (activeAt(placed.message.from, placed.y) ? ACTIVATION_HALF_WIDTH : 0),
+  end:
+    placed.toX -
+    direction *
+      ((activeAt(placed.message.to, placed.y) ? ACTIVATION_HALF_WIDTH : 0) + MARKER_INSET),
+});
+
+const selfPath = (x: number, y: number, activated: boolean): string => {
+  const start = x + (activated ? ACTIVATION_HALF_WIDTH : 0);
+  return (
+    `M${coord(start)},${coord(y)} h${coord(SELF_LOOP_REACH)} ` +
+    `a${SELF_LOOP_CORNER},${SELF_LOOP_CORNER} 0 0 1 ${SELF_LOOP_CORNER},${SELF_LOOP_CORNER} ` +
+    `v${coord(SELF_LOOP_DROP)} ` +
+    `a${SELF_LOOP_CORNER},${SELF_LOOP_CORNER} 0 0 1 -${SELF_LOOP_CORNER},${SELF_LOOP_CORNER} ` +
+    `h-${coord(SELF_LOOP_REACH - MARKER_INSET)}`
+  );
+};
+
+/** How far a self message's pill stands off the loop it names. */
+const SELF_PILL_GAP = 8;
+
+const pillWidth = (label: string): number =>
+  measure(label, "sans-bold", PILL_TEXT_SIZE) + PILL_PADDING_X * 2;
+
+/** The pill of a straight message, settled onto the middle of its arrow. */
+const pillBox = (placed: PlacedMessage, ends: Ends): Box => {
+  const width = pillWidth(placed.label);
+  return {
+    x: (ends.start + ends.end) / 2 - width / 2,
+    y: placed.y - PILL_HEIGHT / 2,
+    width,
+    height: PILL_HEIGHT,
+  };
+};
+
+/** A self message's pill, beside the loop and centred on its height. */
+const selfPillBox = (placed: PlacedMessage, activated: boolean): Box => ({
+  x:
+    placed.fromX +
+    (activated ? ACTIVATION_HALF_WIDTH : 0) +
+    SELF_LOOP_REACH +
+    SELF_LOOP_CORNER +
+    SELF_PILL_GAP,
+  y: placed.y + SELF_LOOP_EXTENT / 2 - PILL_HEIGHT / 2,
+  width: pillWidth(placed.label),
+  height: PILL_HEIGHT,
+});
+
+/**
+ * Pulses for one message: the architecture lens's dot, on a sequence's own
+ * clock. Every pulse in the drawing shares one cycle and owns a slot of it
+ * outright, so the steps light in the order they happen, one at a time.
+ *
+ * A slot is spent entirely on the crossing — the dot enters as the previous
+ * one lands and leaves as the next departs. Nothing waits in the dark for its
+ * turn, which is the whole difference between a sequence that reads as a
+ * relay and one that reads as a still picture with an occasional blink.
+ */
+const pulsesFor = (
+  placed: PlacedMessage,
+  path: string,
+  slotCount: number,
+  palette: Palette,
+  resolvedColour?: string,
+): string => {
+  if (slotCount === 0) return "";
+  const colour = resolvedColour ?? toneColour(palette, toneFor(placed.message.delta));
+  // A repeated step keeps the heavier mark it has always carried; only when
+  // its crossings happen changed here, not what they look like.
+  const radius = placed.slot.count > 1 ? TRAIN_RADIUS : PULSE_RADIUS;
+  const width = 1 / slotCount;
+  const ramp = width * FLOW_PULSE_RAMP;
+  const duration = `${coord(cycleFor(slotCount))}s`;
+
+  return lines(
+    Array.from({ length: placed.slot.count }, (_, index) => {
+      const start = (placed.slot.start + index) * width;
+      const finish = start + width;
+
+      return wrap(
+        "circle",
+        { r: radius, fill: colour, opacity: 0 },
+        tag("animateMotion", {
+          dur: duration,
+          repeatCount: "indefinite",
+          keyPoints: "0;0;1;1",
+          keyTimes: `0;${ratio(start)};${ratio(finish)};1`,
+          calcMode: "linear",
+          path,
+        }) +
+          tag("animate", {
+            attributeName: "opacity",
+            dur: duration,
+            repeatCount: "indefinite",
+            values: "0;0;1;1;0;0",
+            keyTimes:
+              `0;${ratio(start)};${ratio(start + ramp)};` +
+              `${ratio(finish - ramp)};${ratio(finish)};1`,
+          }),
+      );
+    }),
+  );
+};
+
+/**
+ * Paints one message and the pill that names it. Like an architecture edge
+ * and its label, the two come back separately because they belong to
+ * different layers: the pill is opaque precisely so it can be read wherever
+ * it lands, so it passes in front of everything the arrows drew.
+ */
+const paintMessage = (
+  flow: string,
+  placed: PlacedMessage,
+  activeAt: ActiveAt,
+  slotCount: number,
+  palette: Palette,
+): { line: string; pill: string } => {
+  const tone = toneFor(placed.message.delta);
+  const direction = travelDirection(placed.message.kind, placed.fromX, placed.toX);
+  const colour = currentStyle()?.messageColour?.(placed.message);
+  const head = colour === undefined ? headFor(placed.message.kind, tone) : colourMarker(colour, placed.message.kind === "async");
+  const attributes = { ...messageAttributes(placed.message, palette), ...(colour === undefined ? {} : { stroke: colour }) };
+  const record = (d: string, pill: Box): void => currentStyle()?.onLine?.({
+    kind: "message", flow, id: placed.message.id, from: placed.message.from, to: placed.message.to, d, pill,
+  });
+
+  if (direction === 0) {
+    const activated = activeAt(placed.message.from, placed.y);
+    const path = selfPath(placed.fromX, placed.y, activated);
+    record(path, selfPillBox(placed, activated));
+    return {
+      line: lines([
+        tag("path", { class: messageClasses(placed.message, tone), d: path, "marker-end": head, ...attributes }),
+        pulsesFor(placed, path, slotCount, palette, colour),
+      ]),
+      pill: paintLabelPill(placed.label, selfPillBox(placed, activated), tone, palette),
+    };
+  }
+
+  const ends = endsFor(placed, activeAt, direction);
+  const path = `M${coord(ends.start)},${coord(placed.y)} L${coord(ends.end)},${coord(placed.y)}`;
+  record(path, pillBox(placed, ends));
+
+  return {
+    line: lines([
+      tag("path", { class: messageClasses(placed.message, tone), d: path, "marker-end": head, ...attributes }),
+      pulsesFor(placed, path, slotCount, palette, colour),
+    ]),
+    pill: paintLabelPill(placed.label, pillBox(placed, ends), tone, palette),
+  };
+};
+
+/**
+ * The ground under one column: a band in the lane language, holding the
+ * card, its lifeline and its activation bars with the same breathing room a
+ * lane keeps around its cards.
+ */
+const bandBox = (centreX: number, columnWidth: number, layout: FlowLayout): Box => {
+  const top = layout.top + PARTICIPANT_TOP - FLOW_BAND_PAD_Y;
+  return {
+    x: centreX - columnWidth / 2 - FLOW_BAND_PAD_X,
+    y: top,
+    width: columnWidth + FLOW_BAND_PAD_X * 2,
+    height: layout.top + layout.height + FLOW_BAND_PAD_Y - top,
+  };
+};
+
+const paintFlow = (
+  layout: FlowLayout,
+  columnWidth: number,
+  slotCount: number,
+  palette: Palette,
+): string => {
+  const activeAt = activationLookup(layout);
+  const styles = stylesFor(palette);
+
+  const lifelineBottom = layout.top + layout.height;
+
+  const bands = layout.participants.map((participant) => {
+    const box = bandBox(participant.centreX, columnWidth, layout);
+    return tag("rect", {
+      class: "lanebox",
+      x: coord(box.x),
+      y: coord(box.y),
+      width: coord(box.width),
+      height: coord(box.height),
+      rx: LANE_RADIUS,
+      ...styles.lane,
+    });
+  });
+
+  const columns = layout.participants.map((participant) =>
+    lines([
+      tag("line", {
+        class: "lifeline",
+        x1: coord(participant.centreX),
+        y1: coord(layout.lifelineTop),
+        x2: coord(participant.centreX),
+        y2: coord(lifelineBottom),
+        ...styles.lifeline,
+      }),
+      ...participant.activations.map((bar) =>
+        tag("rect", {
+          class: "actbar",
+          x: coord(participant.centreX - ACTIVATION_HALF_WIDTH),
+          y: coord(bar.top),
+          width: ACTIVATION_HALF_WIDTH * 2,
+          height: coord(bar.bottom - bar.top),
+          rx: 4,
+          ...styles.activation,
+        }),
+      ),
+    ]),
+  );
+
+  const cards = layout.participants.map((participant, index) =>
+    paintCard(
+      {
+        node: participant.node,
+        box: participant.card,
+        showIcon: true,
+        titleSize: TITLE_SIZE,
+        row: 0,
+        laneIndex: index,
+      },
+      palette,
+    ),
+  );
+
+  const lineMarkup: string[] = [];
+  const pillMarkup: string[] = [];
+  for (const message of layout.messages) {
+    const { line, pill } = paintMessage(layout.flow.id, message, activeAt, slotCount, palette);
+    lineMarkup.push(line);
+    pillMarkup.push(pill);
+  }
+
+  return lines([
+    wrap("g", {}, lines(bands)),
+    wrap("g", {}, lines(columns)),
+    wrap("g", {}, lines(cards)),
+    wrap("g", {}, lines(lineMarkup)),
+    wrap("g", {}, lines(pillMarkup)),
+  ]);
+};
+
+/**
+ * The room a flow's own drawing takes. The bands already hold the cards and
+ * columns, but a pill is centred on its arrow and a self message's sits off
+ * to the right of one, so either can reach past what the layout sized the
+ * canvas from.
+ */
+const flowBounds = (layout: FlowLayout, columnWidth: number): Box[] => {
+  const activeAt = activationLookup(layout);
+
+  const bands = layout.participants.map((participant) =>
+    bandBox(participant.centreX, columnWidth, layout),
+  );
+
+  const pills = layout.messages.map((placed) => {
+    const direction = travelDirection(placed.message.kind, placed.fromX, placed.toX);
+
+    if (direction === 0) return selfPillBox(placed, activeAt(placed.message.from, placed.y));
+    return pillBox(placed, endsFor(placed, activeAt, direction));
+  });
+
+  const loops = layout.messages
+    .filter((placed) => placed.message.kind === "self")
+    .map((placed) => ({
+      x: placed.fromX,
+      y: placed.y,
+      width: SELF_LOOP_REACH + SELF_LOOP_CORNER + ACTIVATION_HALF_WIDTH,
+      height: SELF_LOOP_DROP + SELF_LOOP_CORNER * 2,
+    }));
+
+  return [...bands, ...pills, ...loops];
+};
+
+/**
+ * The row a step owns: what it draws, grown to the pitch the layout gave it.
+ *
+ * An arrow is a line and a loop is barely taller, so the tight bounds of
+ * either make a poor thing to put a rim around. The row is the honest unit —
+ * it is the space the layout set aside for this step and no other, so two
+ * neighbouring steps can never claim the same band. The label comes with it:
+ * a step lit without its own words is a step a reader cannot name.
+ */
+const messageBox = (placed: PlacedMessage, activeAt: ActiveAt): Box => {
+  const direction = travelDirection(placed.message.kind, placed.fromX, placed.toX);
+
+  const drawn =
+    direction === 0
+      ? selfDrawn(placed, activeAt(placed.message.from, placed.y))
+      : covering(straightDrawn(placed), pillBox(placed, endsFor(placed, activeAt, direction)));
+
+  const pitch = messagePitch(placed.message);
+  return {
+    x: drawn.x,
+    y: drawn.y + drawn.height / 2 - pitch / 2,
+    width: drawn.width,
+    height: pitch,
+  };
+};
+
+const straightDrawn = (placed: PlacedMessage): Box => ({
+  x: Math.min(placed.fromX, placed.toX),
+  y: placed.y,
+  width: Math.abs(placed.toX - placed.fromX),
+  height: 0,
+});
+
+const selfDrawn = (placed: PlacedMessage, activated: boolean): Box =>
+  covering(
+    {
+      x: placed.fromX,
+      y: placed.y,
+      width:
+        (activated ? ACTIVATION_HALF_WIDTH : 0) + SELF_LOOP_REACH + SELF_LOOP_CORNER,
+      height: SELF_LOOP_EXTENT,
+    },
+    selfPillBox(placed, activated),
+  );
+
+const flowAtlas = (layout: FlowLayout, canvas: Canvas): Record<string, Box> => {
+  const activeAt = activationLookup(layout);
+  return atlasBoxes(
+    layout.messages.map((placed) => ({
+      id: placed.message.id,
+      box: messageBox(placed, activeAt),
+    })),
+    canvas,
+  );
+};
+
+export type DataFlowPainting = {
+  width: number;
+  height: number;
+  body: string;
+  atlas: RenderAtlas;
+};
+
+export const paintDataFlow = (
+  flows: readonly Flow[],
+  nodes: readonly GraphNode[],
+  palette: Palette,
+): DataFlowPainting => {
+  const layout = layoutDataFlow(flows, nodes, FLOW_MAX_PULSES_PER_MESSAGE);
+
+  const canvas = canvasFor(
+    layout,
+    union(layout.flows.flatMap((flow) => flowBounds(flow, layout.columnWidth))),
+    DIAGRAM_MARGIN,
+  );
+
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    body: shifted(
+      canvas,
+      lines(
+        layout.flows.map((flow) =>
+          paintFlow(flow, layout.columnWidth, layout.slotCount, palette),
+        ),
+      ),
+    ),
+    atlas: {
+      ...emptyAtlas(),
+      shift: { x: canvas.shiftX, y: canvas.shiftY },
+      /** The card heading a column, which is where this lens draws a node. */
+      nodes: atlasBoxes(
+        layout.flows.flatMap((flow) =>
+          flow.participants.map((participant) => ({
+            id: participant.node.id,
+            box: participant.card,
+          })),
+        ),
+        canvas,
+      ),
+      nodeInstances: layout.flows.flatMap((flow) =>
+        flow.participants.map((participant) => ({
+          id: participant.node.id,
+          flow: flow.flow.id,
+          box: atlasBox(participant.card, canvas),
+        })),
+      ),
+      messages: Object.fromEntries(
+        layout.flows.map((flow) => [flow.flow.id, flowAtlas(flow, canvas)]),
+      ),
+    },
+  };
+};

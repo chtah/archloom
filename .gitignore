@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+.turbo/
+.vercel/
+
+# Local previews and the compiled browser client are rebuilt on demand.
+.archloom/
+src/viewer/client.generated.ts
+skills/archloom-workspace/
+*.tgz

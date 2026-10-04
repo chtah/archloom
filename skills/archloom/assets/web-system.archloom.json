@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "0.1.0",
+  "title": "A small web system",
+  "summary": "A fictional web application: the browser asks the API for records stored in a database.",
+  "lanes": [
+    {
+      "id": "client",
+      "label": "Client",
+      "summary": "The user-facing browser that starts the request."
+    },
+    {
+      "id": "application",
+      "label": "Application",
+      "summary": "The API boundary that validates requests and reads records.",
+      "color": "#58a6ff"
+    },
+    {
+      "id": "storage",
+      "label": "Storage",
+      "summary": "Persistent records read by the application.",
+      "color": "#a371f7"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "Browser",
+      "lane": "client",
+      "kind": "ui",
+      "summary": "The user interface sends an HTTPS request to the API."
+    },
+    {
+      "id": "api",
+      "label": "API",
+      "lane": "application",
+      "kind": "app",
+      "summary": "Validates the request, reads records, and returns JSON."
+    },
+    {
+      "id": "database",
+      "label": "Database",
+      "lane": "storage",
+      "kind": "datastore",
+      "summary": "Stores records. This request reads data without changing it."
+    }
+  ],
+  "edges": [
+    {
+      "id": "https",
+      "from": "browser",
+      "to": "api",
+      "kind": "http",
+      "label": "HTTPS",
+      "summary": "The browser requests the latest records."
+    },
+    {
+      "id": "query",
+      "from": "api",
+      "to": "database",
+      "kind": "data",
+      "label": "Read query",
+      "readOnly": true,
+      "summary": "The API reads records from the database."
+    }
+  ],
+  "flows": [
+    {
+      "id": "load-records",
+      "title": "Load records",
+      "summary": "One successful request, from the browser to the database and back.",
+      "participants": [
+        "browser",
+        "api",
+        "database"
+      ],
+      "messages": [
+        {
+          "id": "request",
+          "from": "browser",
+          "to": "api",
+          "label": "GET /records",
+          "note": "The browser requests the record list."
+        },
+        {
+          "id": "query",
+          "from": "api",
+          "to": "database",
+          "label": "Read records",
+          "note": "The API runs a read-only query."
+        },
+        {
+          "id": "rows",
+          "from": "database",
+          "to": "api",
+          "label": "Rows",
+          "kind": "return",
+          "note": "The database returns matching records."
+        },
+        {
+          "id": "response",
+          "from": "api",
+          "to": "browser",
+          "label": "JSON response",
+          "kind": "return",
+          "note": "The API sends the records back to the browser."
+        }
+      ]
+    }
+  ]
+}

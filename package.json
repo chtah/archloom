@@ -1,0 +1,100 @@
+{
+  "name": "@chtah/archloom",
+  "version": "0.2.0",
+  "description": "Architecture and data-flow diagrams from JSON, with an offline interactive canvas",
+  "license": "MIT",
+  "author": "chtah",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chtah/archloom.git"
+  },
+  "homepage": "https://github.com/chtah/archloom#readme",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "data-flow",
+    "svg",
+    "canvas",
+    "agent-skills"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "packageManager": "pnpm@10.5.2",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./icons/lucide": {
+      "types": "./dist/icons/lucide.d.ts",
+      "import": "./dist/icons/lucide.js"
+    },
+    "./icons/simple-icons": {
+      "types": "./dist/icons/simple-icons.d.ts",
+      "import": "./dist/icons/simple-icons.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "archloom": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "skills/archloom",
+    "README.md",
+    "PRIVACY.md",
+    "SECURITY.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build:engine": "pnpm --filter @coldtea/pr-lens-schema build && pnpm --filter @coldtea/pr-lens-renderer build",
+    "build": "pnpm build:engine && node scripts/build-viewer.mjs && tsup && node scripts/emit-schema.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --filter @coldtea/pr-lens-schema typecheck && pnpm --filter @coldtea/pr-lens-renderer typecheck",
+    "test": "vitest run && pnpm --filter @coldtea/pr-lens-schema test && pnpm --filter @coldtea/pr-lens-renderer test",
+    "test:browser": "node scripts/test-browser.mjs && node scripts/test-embed.mjs",
+    "test:package": "pnpm build && node scripts/check-package.mjs",
+    "demo": "pnpm build && node scripts/demo.mjs",
+    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm test:browser",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm verify"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "lucide": "^1.51.0",
+    "simple-icons": "^16.33.0"
+  },
+  "peerDependenciesMeta": {
+    "lucide": {
+      "optional": true
+    },
+    "simple-icons": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@coldtea/pr-lens-renderer": "workspace:*",
+    "@coldtea/pr-lens-schema": "workspace:*",
+    "@types/node": "20.19.0",
+    "esbuild": "0.28.1",
+    "lucide": "1.51.0",
+    "playwright-core": "1.63.0",
+    "simple-icons": "16.33.0",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

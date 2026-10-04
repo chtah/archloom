@@ -1,0 +1,38 @@
+export { RENDERER_NAME, RENDERER_VERSION } from "./version.js";
+
+export { draw, type DrawOptions, type DrawnSvg } from "./draw.js";
+export { withStyle, type RenderStyle, type RecordedLine } from "./style.js";
+
+export {
+  render,
+  renderAll,
+  type RenderAllOptions,
+  type RenderThemes,
+  type RenderAllResult,
+  type RenderedAsset,
+  type RenderedSvg,
+  type RenderOptions,
+} from "./render.js";
+
+export { emptyAtlas, type RenderAtlas } from "./atlas.js";
+
+export { PrLensRenderError, type RenderErrorCode } from "./errors.js";
+
+export type { Box } from "./geometry.js";
+
+export { paletteFor, THEMES, THEME_PAIR, type Palette, type Theme } from "./theme.js";
+
+export {
+  buildManifest,
+  canonicalJson,
+  contentHash,
+  CONTENT_HASH_LENGTH,
+  graphContentHash,
+  renderAssetFileName,
+  renderAssetId,
+  type AssetAddress,
+} from "./manifest.js";
+
+export { applyCorrections } from "./corrections.js";
+
+export { findView, flattenViews, resolveScope, type ScopedGraph } from "./scope.js";

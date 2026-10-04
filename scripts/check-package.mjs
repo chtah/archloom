@@ -1,0 +1,86 @@
+// Offline packed-consumer smoke: no registry access, publication or global install.
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readFile, writeFile, realpath, cp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const work = await mkdtemp(join(tmpdir(), 'archloom-package-'));
+const run = (binary, args, cwd = root) => {
+  const result = spawnSync(binary, args, { cwd, encoding: 'utf8', timeout: 120_000 });
+  if (result.status !== 0) throw new Error(`${binary} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  return result.stdout;
+};
+const pack = async path => JSON.parse(run('npm', ['pack', '.', '--ignore-scripts', '--json', '--pack-destination', work], await realpath(path)))[0];
+const archive = await pack(root);
+for (const file of archive.files) assert.match(file.path, /^(?:package\.json|README\.md|PRIVACY\.md|SECURITY\.md|LICENSE|THIRD_PARTY_NOTICES\.md|dist\/|schema\/|skills\/archloom\/)/);
+for (const path of ['LICENSE', 'PRIVACY.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist/index.d.ts', 'dist/browser.js', 'dist/browser.d.ts', 'dist/cli.js', 'skills/archloom/SKILL.md', 'skills/archloom/assets/web-system.archloom.json', 'schema/graph.schema.json']) assert.ok(archive.files.some(file => file.path === path), path);
+for (const file of archive.files.filter(file => /^dist\/.+\.js$/.test(file.path))) {
+  const code = await readFile(join(root, file.path), 'utf8');
+  assert.ok(!/prlens\.dev|hello@coldtea/.test(code), `${file.path}: inherited hosted endpoint`);
+  assert.ok(!/(?:from\s*|import\s*\()\s*["'](?:@coldtea\/|(?:node:)?crypto)/.test(code), `${file.path}: unbundled private dependency or runtime crypto`);
+}
+// npm pack cannot reliably operate inside pnpm's virtual node_modules tree.
+const zodStage = join(work, 'zod-source');
+await cp(await realpath(join(root, 'node_modules/zod')), zodStage, { recursive: true });
+const zod = await pack(zodStage);
+const consumer = join(work, 'consumer'); await mkdir(consumer);
+await writeFile(join(consumer, 'package.json'), JSON.stringify({ name: 'archloom-consumer-smoke', private: true, type: 'module', dependencies: { '@chtah/archloom': `file:${join(work, archive.filename)}`, zod: `file:${join(work, zod.filename)}` } }, null, 2));
+run('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--omit=optional', '--no-audit', '--no-fund'], consumer);
+const manifest = JSON.parse(await readFile(join(consumer, 'node_modules/@chtah/archloom/package.json'), 'utf8'));
+assert.equal(manifest.name, '@chtah/archloom'); assert.deepEqual(Object.keys(manifest.dependencies), ['zod']);
+console.log(run(process.execPath, [join(root, 'scripts/test-embed.mjs'), join(consumer, 'node_modules/@chtah/archloom/dist/browser.js')], consumer).trim());
+const input = await readFile(join(root, 'examples/web-system.archloom.json'), 'utf8');
+await writeFile(join(consumer, 'graph.json'), input);
+await writeFile(join(consumer, 'smoke.mjs'), `import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {parseGraph,render,renderAll,renderHtml,ArchloomError} from '@chtah/archloom';
+import {createLucideResolver} from '@chtah/archloom/icons/lucide';
+import {createSimpleIconsResolver} from '@chtah/archloom/icons/simple-icons';
+const input=JSON.parse(await readFile('graph.json','utf8'));const before=JSON.stringify(input);
+const graph=parseGraph(input);assert.equal(renderAll(graph).length,2);
+assert.equal(render(graph).svg,render(graph).svg);assert.equal(JSON.stringify(input),before);
+assert.ok(renderHtml(graph).includes('id="canvas"'));
+assert.throws(()=>parseGraph({}),ArchloomError);
+await assert.rejects(createLucideResolver,/Cannot find package/);
+await assert.rejects(createSimpleIconsResolver,/Cannot find package/);
+console.log('Packed ESM API and lazy optional peers passed');
+`);
+console.log(run(process.execPath, ['smoke.mjs'], consumer).trim());
+assert.equal(run(join(consumer, 'node_modules/.bin/archloom'), ['--version'], consumer).trim(), manifest.version);
+console.log(run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'validate', 'graph.json'], consumer).trim());
+console.log(run(process.execPath, ['node_modules/@chtah/archloom/dist/cli.js', 'render', 'graph.json', '--out', 'output'], consumer).trim());
+await writeFile(join(consumer, 'smoke.ts'), `import {parseGraph,render,renderHtml,combineIconResolvers,type GraphInput,type DiagramAtlas,type IconAsset} from '@chtah/archloom';
+import {createLucideResolver} from '@chtah/archloom/icons/lucide';
+import {createSimpleIconsResolver} from '@chtah/archloom/icons/simple-icons';
+import {mountCanvas,type CanvasHandle} from '@chtah/archloom/browser';
+const input:GraphInput={title:'Example',lanes:[{id:'app',label:'App'}],nodes:[{id:'api',label:'API',lane:'app'}]};
+const atlas:DiagramAtlas=render(parseGraph(input)).atlas;
+const asset:IconAsset={mode:'stroke',notice:'MIT',shapes:[{tag:'circle',attrs:{cx:12,cy:12,r:4}}]};
+renderHtml(input,{icons:combineIconResolvers(()=>asset)});void atlas.nodeInstances;void createLucideResolver;void createSimpleIconsResolver;
+declare const container:HTMLElement;const handle:CanvasHandle=mountCanvas(container,input);handle.update(input,{theme:'light'});handle.destroy();
+`);
+await writeFile(join(consumer, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', types: [], lib: ['ES2022', 'DOM'] }, files: ['smoke.ts'] }));
+run(process.execPath, [join(root, 'node_modules/typescript/lib/tsc.js'), '-p', 'tsconfig.json'], consumer);
+console.log(`Packed consumer typecheck passed; ${archive.files.length} files, ${(archive.size / 1024).toFixed(1)} KiB compressed. Offline install: ${consumer}`);
+const peers = [];
+for (const name of ['lucide', 'simple-icons']) {
+  const stage = join(work, `${name}-source`);
+  await cp(await realpath(join(root, 'node_modules', name)), stage, { recursive: true });
+  peers.push(`file:${join(work, (await pack(stage)).filename)}`);
+}
+run('npm', ['install', ...peers, '--offline', '--ignore-scripts', '--no-audit', '--no-fund'], consumer);
+await writeFile(join(consumer, 'icons.mjs'), `import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {render,combineIconResolvers} from '@chtah/archloom';
+import {createLucideResolver} from '@chtah/archloom/icons/lucide';
+import {createSimpleIconsResolver} from '@chtah/archloom/icons/simple-icons';
+const lucide=await createLucideResolver();const simple=await createSimpleIconsResolver();
+assert.ok(lucide('lucide:server'));assert.equal(simple('si:not-an-icon'),undefined);
+const graph=JSON.parse(await readFile('graph.json','utf8'));graph.nodes[1].icon='lucide:server';
+const diagram=render(graph,{icons:combineIconResolvers(lucide,simple)});
+assert.ok(diagram.notices.some(n=>n.includes('Cole Bemis')));
+console.log('Packed optional adapters with local peer packages passed');
+`);
+console.log(run(process.execPath, ['icons.mjs'], consumer).trim());

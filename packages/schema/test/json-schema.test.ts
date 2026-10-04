@@ -1,0 +1,534 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { broadcastBaselinePatchInput } from "../src/examples/baseline.js";
+import { minimalGraphInput } from "../src/examples/minimal.js";
+import { goldenDocuments } from "../src/examples/index.js";
+import { payloadGraphInput } from "../src/examples/payload.js";
+import {
+  exampleConfigInput,
+  postmarkRefactorGraphInput,
+  postmarkRefactorManifestInput,
+} from "../src/examples/postmark-refactor.js";
+import type { Parsed } from "../src/errors.js";
+import type { ViewInput } from "../src/graph.js";
+import { MAX_VIEWS } from "../src/primitives.js";
+import {
+  safeParseConfig,
+  safeParseGraphDoc,
+  safeParsePatchDoc,
+  safeParseRenderManifest,
+} from "../src/validate.js";
+import { withBatchPayload } from "./helpers.js";
+
+const packageRoot = join(import.meta.dirname, "..");
+const JsonObject = z.record(z.string(), z.unknown());
+
+const loadValidator = async (file: string) => {
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
+  ajv.addFormat("date-time", /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+  ajv.addFormat("uri", /^[a-z][a-z\d+.-]*:\/\/\S+$/i);
+  const source = JsonObject.parse(
+    JSON.parse(await readFile(join(packageRoot, "json-schema", file), "utf8")),
+  );
+  return ajv.compile(source);
+};
+
+type ParityCase = {
+  name: string;
+  schema: string;
+  parse: (input: unknown) => Parsed<unknown>;
+  document: unknown;
+  accepted: boolean;
+  /** Set only where JSON Schema cannot express the rule; see `divergences`. */
+  acceptedByJsonSchema?: boolean;
+};
+
+/**
+ * The rules the parser enforces and JSON Schema cannot state. Each one has a
+ * case below asserting the divergence, so it stays deliberate rather than
+ * becoming a surprise for a producer working from the published files.
+ */
+const divergences = [
+  "referential integrity between elements",
+  "a line range that ends before it starts",
+  "the agreement between a self message's endpoints",
+  "a patch whose two commits are the same",
+  "more views than a render manifest could describe",
+  "a step focusing flow steps the diagram on its stage does not draw",
+  "sample traffic past its depth or byte caps",
+] as const;
+
+const withoutKey = (document: object, key: string): object =>
+  Object.fromEntries(Object.entries(document).filter(([name]) => name !== key));
+
+/** Depth, not breadth: each array in the tree is capped, so only nesting reaches the total. */
+const nestedViews = (count: number): ViewInput[] => {
+  let children: ViewInput[] = [];
+  for (let index = count - 1; index >= 0; index -= 1)
+    children = [
+      { id: `v${index}`, title: `View ${index}`, lens: "architecture", scope: { kind: "all" }, children },
+    ];
+  return children;
+};
+
+const twoSteps = [
+  {
+    id: "first",
+    heading: "sendBroadcastBulk and buildBulkPayload added",
+    body: "Nothing loops over recipients any more. The sender works on a whole batch at a time.",
+    stage: { kind: "view", view: "overview" },
+  },
+  {
+    id: "second",
+    heading: "The send sequence gained 6 new steps",
+    body: "The queue write is the only step that was there before, and it now stamps the batch size.",
+    stage: { kind: "flow", flow: "send-pipeline" },
+  },
+];
+
+const withWalkthrough = (steps: unknown[]) => ({
+  ...postmarkRefactorGraphInput,
+  walkthrough: { steps },
+});
+
+const withFileRef = (file: { path: string; startLine?: number; endLine?: number }) => ({
+  ...minimalGraphInput,
+  nodes: [{ ...minimalGraphInput.nodes[0]!, files: [file] }],
+});
+
+/**
+ * The exported JSON Schemas describe what an author may write, which is the
+ * input side of the contract: a field with a default is one they may leave
+ * out. These cases pin the two representations to the same answer, in both
+ * directions — a JSON Schema that quietly accepts more, or demands more, than
+ * the parser would send every non-TypeScript producer down the wrong path.
+ */
+const parityCases: ParityCase[] = [
+  {
+    name: "the reference pull-request document",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: postmarkRefactorGraphInput,
+    accepted: true,
+  },
+  {
+    name: "a minimal document that leans on every default",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: minimalGraphInput,
+    accepted: true,
+  },
+  {
+    name: "a document missing its provenance",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withoutKey(minimalGraphInput, "provenance"),
+    accepted: false,
+  },
+  {
+    name: "a document carrying security findings",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: { ...minimalGraphInput, findings: [] },
+    accepted: false,
+  },
+  {
+    name: "a document with an unknown lens",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: { ...minimalGraphInput, lenses: ["security"] },
+    accepted: false,
+  },
+  {
+    name: "a view scoped to nothing at all",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: {
+      ...minimalGraphInput,
+      views: [{ id: "empty", title: "Empty", lens: "architecture", scope: { kind: "selection" } }],
+    },
+    accepted: false,
+  },
+  {
+    name: "the reference document with sample traffic on its flow",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: payloadGraphInput,
+    accepted: true,
+  },
+  {
+    name: "a payload with a side that carries nothing",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({ response: { type: "void" } }).doc,
+    accepted: true,
+  },
+  {
+    name: "a payload with neither side",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({}).doc,
+    accepted: false,
+  },
+  {
+    name: "a before with no sample to differ from",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({ request: { type: "Email", before: { To: "ada@example.com" } } }).doc,
+    accepted: false,
+  },
+  {
+    name: "JSON text where a request sample belongs",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({
+      request: { type: "Email", sample: JSON.stringify({ To: "ada@example.com" }) },
+    }).doc,
+    accepted: false,
+  },
+  {
+    name: "JSON text where a response before belongs",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({
+      response: { type: "Email", sample: { To: "ada@example.com" }, before: JSON.stringify({ To: "ada@example.com" }) },
+    }).doc,
+    accepted: false,
+  },
+  {
+    name: "a sample whose strings sit inside the value",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({
+      request: { type: "Email", sample: { To: "ada@example.com", tags: ["one"] }, before: ["one"] },
+    }).doc,
+    accepted: true,
+  },
+  {
+    name: "a patch adding a flow whose step carries JSON text as a sample",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: {
+      ...broadcastBaselinePatchInput,
+      ops: [
+        {
+          op: "add_flow",
+          flow: {
+            ...payloadGraphInput.flows![0]!,
+            messages: [
+              {
+                ...payloadGraphInput.flows![0]!.messages[4]!,
+                payload: { request: { type: "Email", sample: "{}" } },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    accepted: false,
+  },
+  {
+    name: "the baseline patch",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: broadcastBaselinePatchInput,
+    accepted: true,
+  },
+  {
+    name: "a patch with no operations",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: { ...broadcastBaselinePatchInput, ops: [] },
+    accepted: false,
+  },
+  {
+    name: "the example repository config",
+    schema: "config.schema.json",
+    parse: safeParseConfig,
+    document: exampleConfigInput,
+    accepted: true,
+  },
+  {
+    name: "a config that only declares its version",
+    schema: "config.schema.json",
+    parse: safeParseConfig,
+    document: { schemaVersion: exampleConfigInput.schemaVersion },
+    accepted: true,
+  },
+  {
+    name: "a config with no version",
+    schema: "config.schema.json",
+    parse: safeParseConfig,
+    document: {},
+    accepted: false,
+  },
+  {
+    name: "the render manifest",
+    schema: "render-manifest.schema.json",
+    parse: safeParseRenderManifest,
+    document: postmarkRefactorManifestInput,
+    accepted: true,
+  },
+  {
+    name: "a manifest asset that is nowhere",
+    schema: "render-manifest.schema.json",
+    parse: safeParseRenderManifest,
+    document: {
+      ...postmarkRefactorManifestInput,
+      assets: [withoutKey(postmarkRefactorManifestInput.assets[0]!, "url")],
+    },
+    accepted: false,
+  },
+  {
+    name: "a document from a contract version this package does not read",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: { ...minimalGraphInput, schemaVersion: "9.0.0" },
+    accepted: false,
+  },
+  {
+    name: "a file reference that escapes the repository",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withFileRef({ path: "../../etc/passwd" }),
+    accepted: false,
+  },
+  {
+    name: "a line range with no start",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withFileRef({ path: "src/routes/health.ts", endLine: 12 }),
+    accepted: false,
+  },
+  {
+    name: `${divergences[1]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withFileRef({ path: "src/routes/health.ts", startLine: 20, endLine: 2 }),
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: `${divergences[0]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: {
+      ...minimalGraphInput,
+      nodes: [{ ...minimalGraphInput.nodes[0]!, lane: "no-such-lane" }],
+    },
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: `${divergences[2]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: {
+      ...postmarkRefactorGraphInput,
+      flows: [
+        {
+          ...postmarkRefactorGraphInput.flows![0]!,
+          messages: postmarkRefactorGraphInput.flows![0]!.messages.map((message, index) =>
+            index === 0 ? { ...message, kind: "self" } : message,
+          ),
+        },
+      ],
+    },
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: "a file reference spelled for a different operating system",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withFileRef({ path: "C:\\Windows\\system32\\file.ts" }),
+    accepted: false,
+  },
+  {
+    name: "a patch targeting an abbreviated commit",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: {
+      ...broadcastBaselinePatchInput,
+      target: { ...broadcastBaselinePatchInput.target, fromSha: "3f5c1ab" },
+    },
+    accepted: false,
+  },
+  {
+    name: `${divergences[3]}, which only the parser can catch`,
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: {
+      ...broadcastBaselinePatchInput,
+      target: {
+        ...broadcastBaselinePatchInput.target,
+        fromSha: broadcastBaselinePatchInput.target.toSha,
+      },
+    },
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: `${divergences[4]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: { ...minimalGraphInput, views: nestedViews(MAX_VIEWS + 1) },
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: "a walkthrough of a single step",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([twoSteps[0]]),
+    accepted: false,
+  },
+  {
+    name: "a step with a heading and nothing under it",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([withoutKey(twoSteps[0]!, "body"), twoSteps[1]]),
+    accepted: false,
+  },
+  {
+    name: "a step heading longer than the rail can hold",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([{ ...twoSteps[0], heading: "a".repeat(49) }, twoSteps[1]]),
+    accepted: false,
+  },
+  {
+    name: "a step body longer than the line beneath the heading",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([{ ...twoSteps[0], body: "a".repeat(141) }, twoSteps[1]]),
+    accepted: false,
+  },
+  {
+    name: "a step focusing nothing at all",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([
+      { ...twoSteps[0], focus: { kind: "selection" } },
+      twoSteps[1],
+    ]),
+    accepted: false,
+  },
+  {
+    name: `${divergences[5]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([
+      {
+        ...twoSteps[0],
+        stage: { kind: "view", view: "retired-path" },
+        focus: { kind: "selection", messages: ["batch-post"] },
+      },
+      twoSteps[1],
+    ]),
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: `${divergences[6]}, which only the parser can catch`,
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withBatchPayload({
+      request: { type: "Deep", sample: { a: { b: { c: { d: { e: { f: { g: { h: { i: 1 } } } } } } } } } },
+    }).doc,
+    accepted: false,
+    acceptedByJsonSchema: true,
+  },
+  {
+    name: "a step with a detail whose words link to a node and a file",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([
+      {
+        ...twoSteps[0],
+        detail: {
+          text: "The sender builds a whole batch in send.ts.",
+          cites: [
+            { text: "The sender", ref: { kind: "node", node: "send-broadcast-bulk" } },
+            { text: "send.ts", ref: { kind: "file", path: "functions/src/broadcast/send.ts" } },
+          ],
+        },
+      },
+      twoSteps[1],
+    ]),
+    accepted: true,
+  },
+  {
+    name: "a detail that links nothing",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([
+      { ...twoSteps[0], detail: { text: "The sender builds a whole batch.", cites: [] } },
+      twoSteps[1],
+    ]),
+    accepted: false,
+  },
+  {
+    name: "a cite of a kind of place that does not exist",
+    schema: "graph-doc.schema.json",
+    parse: safeParseGraphDoc,
+    document: withWalkthrough([
+      {
+        ...twoSteps[0],
+        detail: { text: "The sender builds a batch.", cites: [{ text: "The sender", ref: { kind: "lane", lane: "functions" } }] },
+      },
+      twoSteps[1],
+    ]),
+    accepted: false,
+  },
+  {
+    name: "a patch that does not say which map it targets",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: { ...broadcastBaselinePatchInput, target: {} },
+    accepted: false,
+  },
+  {
+    name: "a patch that names a map but not the commits",
+    schema: "patch-doc.schema.json",
+    parse: safeParsePatchDoc,
+    document: {
+      ...broadcastBaselinePatchInput,
+      target: { graphId: broadcastBaselinePatchInput.target.graphId },
+    },
+    accepted: false,
+  },
+];
+
+describe("exported JSON Schemas", () => {
+  it.each(parityCases)("$schema and the parser agree on $name", async (parityCase) => {
+    const validate = await loadValidator(parityCase.schema);
+    const document = JsonObject.parse(JSON.parse(JSON.stringify(parityCase.document)));
+
+    expect(validate(document), JSON.stringify(validate.errors, null, 2)).toBe(
+      parityCase.acceptedByJsonSchema ?? parityCase.accepted,
+    );
+    expect(parityCase.parse(parityCase.document).ok).toBe(parityCase.accepted);
+  });
+
+  it("documents every rule it cannot carry", () => {
+    const asserted = parityCases.filter((parityCase) => parityCase.acceptedByJsonSchema === true);
+    expect(new Set(asserted.map((parityCase) => parityCase.name))).toEqual(
+      new Set(divergences.map((rule) => `${rule}, which only the parser can catch`)),
+    );
+  });
+
+  it.each(Object.keys(goldenDocuments).filter((file) => file.endsWith(".graph.json")))(
+    "accepts the published %s",
+    async (golden) => {
+    const validate = await loadValidator("graph-doc.schema.json");
+    const document = JsonObject.parse(
+      JSON.parse(await readFile(join(packageRoot, "examples", golden), "utf8")),
+    );
+
+    expect(validate(document), JSON.stringify(validate.errors, null, 2)).toBe(true);
+  });
+});
