@@ -91,10 +91,30 @@ jobs:
     name: Create the GitHub release
     needs: publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 40
     permissions:
       contents: write # create the release for the tag; nothing else
     steps:
+      # "npm publish" can return before the version is installable: the registry
+      # takes minutes to serve a new tarball, and a staged version waits for the
+      # owner to confirm it on npmjs.com. Announce nothing until it can be installed.
+      - name: Wait for the registry to serve the version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          for attempt in $(seq 1 90); do
+            listed="$(curl -fsS "https://registry.npmjs.org/@chtah%2farchloom" | jq -r --arg v "$version" '.versions[$v].dist.tarball // empty' || true)"
+            if [ -n "$listed" ] && curl -fsS -o /dev/null "$listed"; then
+              echo "@chtah/archloom@$version is installable"
+              exit 0
+            fi
+            echo "attempt $attempt: not served yet"
+            sleep 20
+          done
+          echo "::error::@chtah/archloom@$version is not on the registry after 30 minutes. If it is staged, confirm it on npmjs.com, then re-run this job only."
+          exit 1
+
       - name: Check out the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

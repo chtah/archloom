@@ -50,7 +50,7 @@ co-authorship or private session links.
 | `test/`, engine `test/` directories | Public and private-engine regression tests. |
 | `scripts/test-browser.mjs`, `scripts/test-embed.mjs` | Local Chrome checks of native popup, browser mounting and real viewer. |
 | `.github/workflows/ci.yml` | PR/main checks with Node 24, locked dependencies, Chrome and packed consumers; no publication or deploy. |
-| `.github/workflows/release.yml` | The only workflow that publishes: on a `v*` tag, after the owner approves the `npm` environment, it re-runs the checks, publishes to npm through trusted publishing and creates the GitHub release. |
+| `.github/workflows/release.yml` | The only workflow that publishes: on a `v*` tag, after the owner approves the `npm` environment, it re-runs the checks, publishes to npm through trusted publishing, waits until the registry serves the version and then creates the GitHub release. |
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` | What outside contributors may send, and the issue and pull request forms. |
 | `.github/workflows/dependency-review.yml`, `scorecard.yml`, `.github/dependabot.yml` | Dependency vulnerability review on PRs, weekly OpenSSF Scorecard, and weekly dependency and action update PRs. |
 | `skills/archloom/` | Active installable skill and public graph reference. |
