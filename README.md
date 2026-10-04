@@ -5,25 +5,96 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/chtah/archloom/badge)](https://scorecard.dev/viewer/?uri=github.com/chtah/archloom)
 [![license](https://img.shields.io/npm/l/@chtah/archloom)](LICENSE)
 
-Architecture and data-flow diagrams from JSON, with an offline interactive canvas.
+Let your coding agent draw the architecture of your codebase, and keep the
+drawing current as the code changes.
+
+Agents write code faster than people can follow how the system fits together.
+Archloom gives the agent a skill for reading a codebase and a small JSON format
+for what it finds, and turns that into diagrams a person can read in a README, a
+comment or an interactive canvas.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="examples/architecture.dark.svg">
+  <img alt="A small web system" src="examples/architecture.light.svg">
+</picture>
+
+- **A skill, not a service.** The agent you already use reads the code. Archloom
+  calls no model, uploads nothing and has no backend.
+- **A graph you can review.** The source is one `*.archloom.json` file in your
+  repository. Changes to the architecture show up as a diff.
+- **Images for where people read.** Light and dark SVGs with a snippet for
+  Markdown files and comments, and an offline HTML canvas with pan, zoom, detail
+  popups and step-by-step data flow.
+- **Deterministic output.** The same graph gives the same SVG bytes, so CI can
+  tell when a committed image is out of date.
+
+## Use it with an agent
+
+Install the CLI in your project and the skill in your agent:
+
+```bash
+npm install --save-dev @chtah/archloom
+npx skills add chtah/archloom --skill archloom
+```
+
+Or copy [`skills/archloom/`](skills/archloom/) into your agent's skill directory.
+Then ask:
+
+> Draw the architecture of this repository with Archloom, with a data-flow
+> diagram for the main request.
+
+The agent reads what declares and runs your system, writes
+`docs/architecture/<name>.archloom.json`, and generates:
+
+| File | Use |
+| --- | --- |
+| `docs/architecture/<name>.archloom.json` | The source. Commit it. |
+| `docs/architecture/<view>.light.svg`, `<view>.dark.svg` | Images to embed. Commit them. |
+| `.archloom/<name>/index.html` | Interactive canvas for looking around. Local only. |
+
+It reports which file shows each component and connection, and what it left out
+and why. Before the first commit it shows you every label and summary, because a
+committed graph is published with everything in it.
+
+When the architecture changes, ask the agent to bring the diagram up to date. It
+edits the same graph and keeps the IDs, so the diff shows what changed. The skill
+offers one line for your `AGENTS.md` so agents do this as part of the change, and
+a check for CI:
+
+```bash
+npx archloom markdown docs/architecture/<name>.archloom.json --check
+```
+
+The check fails when the committed SVGs differ from a fresh render. It cannot
+know whether the graph still matches the code; that stays a review question.
+
+How well does the skill read code? [`evals/`](evals/) holds small fixture
+codebases with answer keys, a grader that uses no model, and the results of each
+run. Read the limits there before relying on a number.
+
+## What you get
+
+A data-flow view of the same example:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="examples/flow-load-records.dark.svg">
+  <img alt="Load records" src="examples/flow-load-records.light.svg">
+</picture>
+
+And the offline canvas, opened from a file with no server:
 
 ![Archloom canvas demo](docs/archloom/demo.gif)
 
-- **Architecture diagrams** with lanes, component cards and connecting edges.
-- **Data-flow diagrams** with ordered sync, async, return and self messages.
-- **Deterministic, self-contained SVGs** in light and dark themes.
-- **An offline HTML canvas** with pan, zoom, detail popups, message stepping and SVG download.
-- **No backend.** Nothing is uploaded, and no model provider or hosted service is involved.
+Both images above come from [`examples/web-system.archloom.json`](examples/web-system.archloom.json)
+with `archloom markdown`; see [diagrams in Markdown and comments](docs/markdown.md).
 
-## Install
+## Use it without an agent
+
+Archloom is also a plain ESM library and CLI. Requires Node.js 20.11 or newer.
 
 ```bash
 npm install @chtah/archloom
 ```
-
-Requires Node.js 20.11 or newer. The package is ESM only.
-
-## Quick start
 
 Describe a system in `graph.json`:
 
@@ -41,77 +112,44 @@ Describe a system in `graph.json`:
 
 ```bash
 npx archloom validate graph.json
-npx archloom render graph.json --out diagrams
-```
-
-Open `diagrams/index.html` in a browser; no server is needed. The directory also
-holds one SVG per view and `atlas.json`. Options: `--theme dark|light`,
-`--icons lucide|simple-icons|both`, `--force`.
-
-To put a diagram in a README or a comment, write light and dark SVGs and print
-a snippet that follows the reader's theme; see [Markdown](docs/markdown.md):
-
-```bash
-npx archloom markdown graph.json --out docs/architecture
+npx archloom markdown graph.json --out docs/architecture   # light and dark SVGs, prints a snippet
+npx archloom render graph.json --out .archloom/system      # SVGs, atlas.json and index.html
 ```
 
 The full format is in the [graph reference](skills/archloom/references/graph.md)
-and the [JSON Schema](schema/graph.schema.json). A larger example lives in
-[`examples/`](examples/web-system.archloom.json).
-
-## Library
+and the [JSON Schema](schema/graph.schema.json).
 
 ```js
-import { parseGraph, render, renderHtml } from '@chtah/archloom';
+import { parseGraph, render, renderMarkdown, renderHtml } from '@chtah/archloom';
 
 const graph = parseGraph(JSON.parse(json)); // throws ArchloomError on invalid input
 const { svg } = render(graph, { lens: 'architecture', theme: 'dark' });
+const images = renderMarkdown(graph, { base: 'docs/architecture' });
 const html = renderHtml(graph); // the self-contained canvas
 ```
 
-| Export | Purpose |
+| Topic | Where |
 | --- | --- |
-| `parseGraph(input)` | Validate input and return a graph with defaults applied. |
-| `render(input, options?)` | Render one diagram to SVG. |
-| `renderAll(input, options?)` | Render every view. |
-| `renderMarkdown(input, options?)` | Render every view in both themes, with a Markdown snippet each. |
-| `renderHtml(input, options?)` | Return the offline canvas as one HTML string. |
-| `ArchloomError` | Error with a stable `code` and validation `issues`. |
+| Functions, options and atlas geometry | [API reference](docs/api.md) |
+| Embedding the canvas in a web page with `mountCanvas` | [Embedding](docs/embedding.md) |
+| Lucide and Simple Icons, and their trademark terms | [Icons](docs/icons.md) |
+| SVGs and snippets for Markdown and comments | [Markdown](docs/markdown.md) |
 
-See the [API reference](docs/api.md) for options, diagram fields and atlas geometry.
+## What Archloom does not do
 
-## Embed the canvas
-
-```js
-import { mountCanvas } from '@chtah/archloom/browser';
-
-const canvas = mountCanvas(document.getElementById('diagram'), graph, { theme: 'dark' });
-canvas.update(graph, { theme: 'light' });
-canvas.destroy();
-```
-
-The container needs a definite CSS height. The canvas runs in a sandboxed iframe;
-see [embedding](docs/embedding.md).
-
-## Icons
-
-Default glyphs need no extra package. For [Lucide](https://lucide.dev) or
-[Simple Icons](https://simpleicons.org), install the peer (`npm install lucide`),
-set keys such as `lucide:server` or `si:postgresql` on nodes, and render with
-`--icons lucide`. Brand icons carry trademark terms of their own; read
-[icons](docs/icons.md) before publishing them.
-
-## Agent skill
-
-[`skills/archloom/`](skills/archloom/) teaches coding agents to write and render
-graphs. Copy the directory into your agent's skill directory, or run
-`npx skills add chtah/archloom --skill archloom`.
+- **No pull-request integration.** It does not analyse diffs or post comments.
+  You or your agent paste the snippet where it belongs.
+- **No MCP server.** Agents that can read a codebase already have a shell, so the
+  CLI and the skill cover it without another protocol to maintain. Open an issue
+  if you have a client where that does not hold.
+- **No editor.** The canvas is read-only; the graph file is the thing you edit.
 
 ## Privacy
 
-The HTML canvas and `atlas.json` embed the whole graph, including entities left
-out of named views. A view is not redaction; read [PRIVACY.md](PRIVACY.md) before
-sharing generated files. Report vulnerabilities through [SECURITY.md](SECURITY.md).
+The graph, the HTML canvas and `atlas.json` hold the whole system as written,
+including anything a view leaves out. A view is not redaction. Read
+[PRIVACY.md](PRIVACY.md) before committing or sharing diagrams of a private
+system, and report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
