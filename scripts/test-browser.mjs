@@ -130,8 +130,6 @@ try {
   assert.match(await page.locator('#detail-title').textContent(), /Read records/, 'Enter on the step button keeps stepping');
   await page.locator('#drawing [data-kind="node"][data-id="api"]').focus(); await page.keyboard.press('Enter');
   assert.match(await page.locator('#detail-title').textContent(), /API/);
-  await page.locator('#licenses').click();
-  assert.match(await page.locator('#detail-body').textContent(), /Cole Bemis/);
   await page.screenshot({ path: join(directory, 'flow-dark.png') });
   const ids = await page.locator('[id]').evaluateAll(elements => elements.map(element => element.id));
   assert.equal(new Set(ids).size, ids.length, 'active DOM IDs must not duplicate');
@@ -168,5 +166,5 @@ try {
   await mobile.close();
   assert.deepEqual(requests, [], 'canvas must attempt no HTTP requests');
   assert.deepEqual(errors, [], 'browser must not report script errors or dialogs');
-  console.log(`Browser checks passed: native popup positioning/close/focus/mobile, geometry clicks, pan/zoom, themes, flow steps, pause/play, keyboard, notices, duplicate flow headings, XSS and reduced motion; HTTP requests: 0. Screenshots: ${directory}`);
+  console.log(`Browser checks passed: native popup positioning/close/focus/mobile, geometry clicks, pan/zoom, themes, flow steps, pause/play, keyboard, duplicate flow headings, XSS and reduced motion; HTTP requests: 0. Screenshots: ${directory}`);
 } finally { await context.close(); await browser.close(); }

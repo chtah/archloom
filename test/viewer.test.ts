@@ -87,14 +87,14 @@ describe("offline HTML canvas", () => {
     }
   });
 
-  it("includes local icon notices for both themes and accessible license and canvas controls", () => {
+  it("includes local icon notices for both themes and accessible canvas controls", () => {
     const notice = 'MIT · Fictional test icon <script>alert(1)</script>';
     const graph = { ...webSystem, nodes: webSystem.nodes.map((node) => ({ ...node, icon: "custom:test" })) };
     const html = renderHtml(graph, { icons: () => ({ mode: "stroke", notice, shapes: [{ tag: "path", attrs: { d: "M1 1 L23 23" } }] }) });
     const data = payload(html);
     for (const theme of ["dark", "light"] as const) for (const diagram of data.diagrams[theme]) expect(diagram.notices).toEqual([notice]);
-    for (const id of ["canvas", "drawing", "view-select", "theme-toggle", "play-toggle", "fit", "zoom-in", "zoom-out", "step-next", "download", "details", "detail-title", "detail-body", "licenses"]) expect(html).toContain(`id="${id}"`);
-    expect(html).toContain('id="licenses" type="button" aria-controls="details"');
+    for (const id of ["canvas", "drawing", "view-select", "theme-toggle", "play-toggle", "fit", "zoom-in", "zoom-out", "step-next", "download", "details", "detail-title", "detail-body"]) expect(html).toContain(`id="${id}"`);
+    expect(html).not.toContain('id="licenses"');
     expect(html).toContain('id="canvas" tabindex="0"');
   });
 });
