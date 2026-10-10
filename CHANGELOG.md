@@ -3,7 +3,10 @@
 Notable changes to `@chtah/archloom`. Versions follow semantic versioning; while
 the version is below 1.0, a minor release may change behavior.
 
-## Unreleased
+## 0.4.0
+
+While the version is below 1.0, this minor release changes behavior: graphs
+that set `layout.direction: "down"` now render differently.
 
 ### Added
 
