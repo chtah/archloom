@@ -24,6 +24,21 @@ export const LANE_BOTTOM_PADDING = 20;
  * Sized so that two cards sharing a row still each get a readable width.
  */
 export const LANE_CONTENT_WIDTH = 372;
+/**
+ * Top-to-bottom layouts (`layout.direction: "down"`) turn the grid on its
+ * side: lanes become horizontal bands stacked down the page and ranks become
+ * columns running left to right. A card is as wide as a column, and a column
+ * is the same width everywhere for the same reason a lane is: a long name
+ * must not slide every later column sideways.
+ */
+export const DOWN_CARD_WIDTH = 200;
+/**
+ * The strip at the left of every band that holds the lane's name, playing the
+ * part the header above each column plays left to right. No route enters it.
+ */
+export const DOWN_LANE_HEADER_WIDTH = 160;
+/** Two cards sharing a column of one band, one above the other. */
+export const DOWN_PAIR_GAP = 20;
 export const LANE_RADIUS = 12;
 export const LANE_LABEL_SIZE = 10;
 export const LANE_LABEL_TRACKING = 0.12;

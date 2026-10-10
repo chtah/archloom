@@ -109,8 +109,10 @@ When views are provided, output contains those views and their descendants only.
 
 Optional layout hints: `laneOrder` (list of known lane IDs, no duplicates) and
 `rank` (known node IDs mapped to integers 0–256). These are layout hints, not
-editable pixel positions. `direction` (`right` or `down`) is accepted but
-reserved: it has no effect yet, and diagrams are always laid out left to right.
+editable pixel positions. `direction` is `right` (default: lanes are columns
+left to right and connections run down them) or `down` (lanes are bands stacked
+top to bottom and connections run across them, left to right). It applies to
+architecture views only; data-flow sequences always run top to bottom.
 
 ## Limits and artifacts
 

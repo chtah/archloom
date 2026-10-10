@@ -131,8 +131,8 @@ function closePopup(restoreFocus = false): void {
   if (restoreFocus && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
   returnFocus = undefined;
 }
-type Details = { eyebrow: Array<string | undefined>; title: string; summary?: string; rows: Array<[string, string | undefined]>; stacked?: boolean };
-function details({ eyebrow, title: heading, summary, rows, stacked = false }: Details): void {
+type Details = { eyebrow: Array<string | undefined>; title: string; summary?: string; rows: Array<[string, string | undefined]> };
+function details({ eyebrow, title: heading, summary, rows }: Details): void {
   eyebrowLabel.textContent = eyebrow.filter(Boolean).join(" · ");
   title.textContent = heading;
   body.replaceChildren();
@@ -142,7 +142,6 @@ function details({ eyebrow, title: heading, summary, rows, stacked = false }: De
     body.append(paragraph);
   }
   const list = document.createElement("dl");
-  list.classList.toggle("stacked", stacked);
   for (const [label, value] of rows) {
     if (value === undefined || value === "") continue;
     const term = document.createElement("dt");
@@ -327,14 +326,6 @@ step.addEventListener("click", () => {
   // Keep focus on the button so repeated Enter keeps stepping; Escape returns here too.
   returnFocus = step;
   step.focus({ preventScroll: true });
-});
-element("licenses").addEventListener("click", () => {
-  clearSelection();
-  const notices = [...new Set([...diagrams.dark, ...diagrams.light].flatMap((candidate) => candidate.notices))];
-  details({ eyebrow: ["About"], title: "Licenses & attribution", stacked: true, rows: [["Archloom", "Derived from PR Lens. MIT License · Copyright (c) 2026 Coldtea AI."], ...notices.map((notice): [string, string] => ["Icon notice", notice]), ...(notices.length ? [] : [["Icons", "No icon assets in this document."]] as Array<[string, string]>)] });
-  const button = element("licenses").getBoundingClientRect();
-  const area = canvas.getBoundingClientRect();
-  openPopup(element("licenses"), { x: button.left - area.left - canvas.clientLeft, y: button.top - area.top - canvas.clientTop, width: button.width, height: button.height }, true);
 });
 element("detail-close").addEventListener("click", () => closePopup(true));
 document.addEventListener("pointerdown", (event) => {

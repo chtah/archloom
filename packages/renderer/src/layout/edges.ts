@@ -14,6 +14,26 @@ import { boxCentre, coord, type Box, type Point, type Side } from "../geometry.j
 import type { ArchitectureLayout, LayoutGrid, PlacedLane, PlacedNode } from "./architecture.js";
 import { pillSize } from "./labels.js";
 
+const swap = (point: Point): Point => ({ x: point.y, y: point.x });
+const swapBox = (box: Box): Box => ({ x: box.y, y: box.x, width: box.height, height: box.width });
+
+/**
+ * The layout in flow coordinates, where lanes advance along x and rows along
+ * y — which is what every plan below is written in. Left to right that is the
+ * drawing itself; top to bottom it is the drawing reflected across its
+ * diagonal, which keeps every right angle, gap and port a right angle, gap
+ * and port, so routes are planned exactly as they would be left to right and
+ * reflected back to be drawn.
+ */
+const inFlow = (layout: ArchitectureLayout): ArchitectureLayout =>
+  layout.direction === "right"
+    ? layout
+    : {
+        ...layout,
+        lanes: layout.lanes.map((lane) => ({ ...lane, box: swapBox(lane.box) })),
+        nodes: layout.nodes.map((node) => ({ ...node, box: swapBox(node.box) })),
+      };
+
 /**
  * A route, kept as its own segments rather than as a path string, because the
  * label pill has to be placed on a point of it after the fact.
@@ -616,8 +636,9 @@ const CROSSING_COST = CARD_HEIGHT + ROW_GAP;
  */
 export const chooseRetiredRoutes = (
   edges: readonly GraphEdge[],
-  layout: ArchitectureLayout,
+  drawn: ArchitectureLayout,
 ): RetiredRoutes => {
+  const layout = inFlow(drawn);
   const nodes = new Map(layout.nodes.map((node) => [node.node.id, node]));
   const retired = edges.filter((edge) => {
     const from = nodes.get(edge.from);
@@ -649,11 +670,17 @@ export const chooseRetiredRoutes = (
   return new Map(
     retired.map(({ id, label }) => {
       const points = directPass.waypoints.get(id) ?? [];
-      const fits = label === undefined || holdsPill(points, pillSize(label));
+      const fits = label === undefined || holdsPill(points, pillInFlow(label, layout.direction));
       const cheaper = (direct.get(id) ?? Number.POSITIVE_INFINITY) < (exile.get(id) ?? 0);
       return [id, fits && cheaper ? "direct" : "exile"];
     }),
   );
+};
+
+/** A pill's footprint in flow coordinates: on its side when the drawing is. */
+const pillInFlow = (label: string, direction: ArchitectureLayout["direction"]) => {
+  const size = pillSize(label);
+  return direction === "right" ? size : { width: size.height, height: size.width };
 };
 
 /** No label fits on the direct line between a pair's halves; exile gives it room. */
@@ -670,13 +697,14 @@ export const routeEdges = (
   edges: readonly GraphEdge[],
   layout: ArchitectureLayout,
   retired: RetiredRoutes,
-): RoutedEdge[] => finalPass(edges, layout, retired).routed;
+): RoutedEdge[] => finalPass(edges, inFlow(layout), retired).routed;
 
 export type ChannelTraffic = {
   corridors: ReadonlyMap<number, number>;
   bands: ReadonlyMap<number, number>;
   /** Where room for each edge's label would have to come from. */
   corridorsByEdge: ReadonlyMap<string, readonly number[]>;
+  bandsByEdge: ReadonlyMap<string, readonly number[]>;
 };
 
 /**
@@ -697,10 +725,11 @@ export const routeAndCount = (
   layout: ArchitectureLayout,
   retired: RetiredRoutes,
 ): { routed: RoutedEdge[]; traffic: ChannelTraffic } => {
-  const pass = finalPass(edges, layout, retired);
+  const pass = finalPass(edges, inFlow(layout), retired);
   const corridors = new Map<number, number>();
   const bands = new Map<number, number>();
   const corridorsByEdge = new Map<string, number[]>();
+  const bandsByEdge = new Map<string, number[]>();
   for (const route of pass.plans)
     for (const channel of route.channels)
       switch (channel.kind) {
@@ -711,15 +740,20 @@ export const routeAndCount = (
           corridorsByEdge.set(route.edge.id, through);
           break;
         }
-        case "band":
+        case "band": {
           bands.set(channel.index, (bands.get(channel.index) ?? 0) + 1);
+          const through = bandsByEdge.get(route.edge.id) ?? [];
+          through.push(channel.index);
+          bandsByEdge.set(route.edge.id, through);
           break;
+        }
         default:
           assertNever(channel, "Unhandled channel");
       }
-  return { routed: pass.routed, traffic: { corridors, bands, corridorsByEdge } };
+  return { routed: pass.routed, traffic: { corridors, bands, corridorsByEdge, bandsByEdge } };
 };
 
+/** `layout` is in flow coordinates; the routes come back in the drawing's. */
 const finalPass = (
   edges: readonly GraphEdge[],
   layout: ArchitectureLayout,
@@ -735,7 +769,7 @@ type Pass = {
   plans: Route[];
   /** Per trunk group, each member's waypoints minus the shared head segment. */
   branches: Map<string, Point[][]>;
-  /** Every planned route's waypoints, before its corners are rounded. */
+  /** Every planned route's waypoints in flow coordinates, before its corners are rounded. */
   waypoints: Map<string, Point[]>;
 };
 
@@ -813,7 +847,7 @@ const routePass = (
       branches.set(route.trunk, list);
     }
 
-    const curve = curveThrough(points);
+    const curve = curveThrough(layout.direction === "right" ? points : points.map(swap));
     routedById.set(route.edge.id, {
       edge: route.edge,
       path: pathOf(curve),
@@ -825,7 +859,8 @@ const routePass = (
   const routed = drawable.map(({ edge, from }) => {
     const known = routedById.get(edge.id);
     if (known !== undefined) return known;
-    const curve = selfLoop(from.box);
+    // Off the card's right face in the drawing, whichever way it runs.
+    const curve = selfLoop(layout.direction === "right" ? from.box : swapBox(from.box));
     return {
       edge,
       path: pathOf(curve),
