@@ -1,6 +1,6 @@
 {
   "name": "@chtah/archloom",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A skill and CLI for coding agents to draw a codebase's architecture and data flow, as SVG and an offline canvas",
   "license": "MIT",
   "author": "chtah",
