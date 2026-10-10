@@ -27,6 +27,7 @@ import {
   cardBadges,
   cardTextWidth,
   deltaBadgeText,
+  DOWN_LANE_HEADER_TEXT_WIDTH,
   laneHeaderText,
   occupiedBoxes,
   type PlacedNode,
@@ -45,6 +46,7 @@ import {
   LANE_HEADER_BASELINE,
   LANE_PADDING_X,
   LANE_RADIUS,
+  LANE_TOP,
   SUBTITLE_SIZE,
 } from "../design.js";
 
@@ -295,9 +297,13 @@ export const paintArchitecture = (
     if (label !== undefined) drawn.push(label);
   }
 
+  const down = layout.direction === "down";
   const lanes = layout.lanes.map(({ lane, box }) => {
     const tint = currentStyle()?.laneTint?.(lane);
     const info = currentStyle()?.laneInfo?.(lane);
+    // Over the column left to right; in the strip at the band's left top to bottom.
+    const header = down ? laneHeaderText(lane, DOWN_LANE_HEADER_TEXT_WIDTH) : laneHeaderText(lane);
+    const baseline = down ? box.y + LANE_HEADER_BASELINE - LANE_TOP : LANE_HEADER_BASELINE;
     return lines([
       tag("rect", {
         class: "lanebox",
@@ -310,8 +316,8 @@ export const paintArchitecture = (
         ...(tint === undefined ? {} : { fill: tint, "fill-opacity": 0.07, stroke: tint, "stroke-opacity": 0.2 }),
       }),
       textNode(
-        { class: "lanelabel", x: coord(box.x + LANE_PADDING_X), y: LANE_HEADER_BASELINE, ...styles.laneLabel },
-        info === undefined ? laneHeaderText(lane) : `${laneHeaderText(lane)} · ${info}`,
+        { class: "lanelabel", x: coord(box.x + LANE_PADDING_X), y: coord(baseline), ...styles.laneLabel },
+        info === undefined ? header : `${header} · ${info}`,
       ),
     ]);
   });

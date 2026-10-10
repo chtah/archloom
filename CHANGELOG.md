@@ -3,6 +3,18 @@
 Notable changes to `@chtah/archloom`. Versions follow semantic versioning; while
 the version is below 1.0, a minor release may change behavior.
 
+## Unreleased
+
+### Added
+
+- `layout.direction: "down"` lays architecture views out top to bottom: lanes
+  become bands stacked down the page and connections run across them. `right`
+  output is unchanged. Data-flow views are unaffected.
+
+### Removed
+
+- The HTML viewer no longer shows the `A` mark or the licenses popup.
+
 ## 0.3.0
 
 ### Added

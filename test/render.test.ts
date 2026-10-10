@@ -15,6 +15,23 @@ describe("system rendering", () => {
     expect(drawn).not.toHaveProperty("provenance");
   });
 
+  it("lays architecture out top to bottom for layout.direction down, leaving data flow alone", () => {
+    const turned = { ...webSystem, layout: { ...webSystem.layout, direction: "down" as const } };
+    const across = render(webSystem);
+    const down = render(turned);
+    expect(down.svg).not.toBe(across.svg);
+    const lanes = webSystem.lanes.map((lane) => down.atlas.lanes[lane.id]);
+    lanes.forEach((box, index) => {
+      const next = lanes[index + 1];
+      if (box !== undefined && next !== undefined) {
+        expect(next.x).toBe(box.x);
+        expect(next.y).toBeGreaterThan(box.y + box.height);
+      }
+    });
+    expect(webSystem.flows.length).toBeGreaterThan(0);
+    expect(render(turned, { lens: "data-flow" }).svg).toBe(render(webSystem, { lens: "data-flow" }).svg);
+  });
+
   it("uses a local structured icon resolver and preserves its notice", () => {
     const graph = { ...webSystem, nodes: webSystem.nodes.map((node) => ({ ...node, icon: "custom:api" })) };
     const drawn = render(graph, { icons: () => ({ mode: "stroke", notice: "MIT — fictional test icon", shapes: [{ tag: "path", attrs: { d: "M2 2L22 22" } }] }) });

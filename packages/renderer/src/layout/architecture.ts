@@ -13,6 +13,9 @@ import {
   CARD_PADDING_X,
   CONTENT_TOP,
   DIAGRAM_MARGIN,
+  DOWN_CARD_WIDTH,
+  DOWN_LANE_HEADER_WIDTH,
+  DOWN_PAIR_GAP,
   ICON_CHIP_GAP,
   ICON_CHIP_SIZE,
   ICON_MIN_CARD_WIDTH,
@@ -134,6 +137,11 @@ export const occupiedBoxes = (nodes: readonly PlacedNode[]): Box[] =>
  * lane's cards and the horizontal extents of every row. Corridor `i` runs to
  * the left of lane `i`; the extra corridor after the last lane is where
  * retired pathways are exiled to.
+ *
+ * The grid is in flow coordinates, where lanes always advance along x and
+ * rows along y. Left to right those are the drawing's own; top to bottom they
+ * are the drawing's with x and y swapped, so a "row" is a column and a
+ * "corridor" the gap between two bands.
  */
 export type LayoutGrid = {
   rows: { top: number; height: number }[];
@@ -156,7 +164,10 @@ export type GapExpansions = {
   bands: ReadonlyMap<number, number>;
 };
 
+export type Direction = "right" | "down";
+
 export type ArchitectureLayout = {
+  direction: Direction;
   width: number;
   height: number;
   lanes: PlacedLane[];
@@ -250,6 +261,8 @@ export const layoutArchitecture = (
     return rows === undefined ? [] : [{ lane, rows }];
   });
 
+  if (hints?.direction === "down") return layoutDown(lanes, seating, corridorExtra, bandExtra);
+
   const laneBoxWidth = LANE_CONTENT_WIDTH + LANE_PADDING_X * 2;
 
   const gridHeights = new Map<number, number>();
@@ -327,6 +340,7 @@ export const layoutArchitecture = (
   });
 
   return {
+    direction: "right",
     // Whole numbers: the canvas is reported to the comment composer as pixels,
     // and half a pixel of diagram is not a thing a reviewer can be shown.
     width: Math.ceil(laneX - LANE_GAP + DIAGRAM_MARGIN),
@@ -338,16 +352,114 @@ export const layoutArchitecture = (
 };
 
 /**
+ * Top to bottom: every lane a horizontal band, its name in a strip at the
+ * left, and the shared rows of the grid laid out as columns across all of
+ * them. Seating is the same as left to right — the same rows, the same pairs —
+ * so a document reads the same story either way round; a pair stacks one card
+ * over the other, the one leaning toward the earlier lanes on top.
+ *
+ * Unlike a column left to right, a band is only as tall as the tallest stack
+ * it holds: a fixed height would have to fit a pair, leaving every band
+ * without one mostly empty.
+ */
+const layoutDown = (
+  lanes: readonly { lane: Lane; rows: readonly SeatedRow[] }[],
+  seating: { rowCount: number; deadFromRow: number | undefined },
+  corridorExtra: (index: number) => number,
+  bandExtra: (index: number) => number,
+): ArchitectureLayout => {
+  const contentLeft = DIAGRAM_MARGIN + DOWN_LANE_HEADER_WIDTH;
+  const columns: { top: number; height: number }[] = [];
+  let cursor = contentLeft;
+  for (let grid = 0; grid < seating.rowCount; grid += 1) {
+    if (grid > 0) cursor += bandExtra(grid);
+    columns.push({ top: cursor, height: DOWN_CARD_WIDTH });
+    cursor += DOWN_CARD_WIDTH + ROW_GAP;
+  }
+  const contentRight = cursor - ROW_GAP;
+  const laneRight = contentRight + LANE_BOTTOM_PADDING + bandExtra(seating.rowCount);
+
+  const stackHeight = (row: SeatedRow): number =>
+    row.nodes.reduce((sum, node) => sum + cardHeight(node), 0) +
+    (row.nodes.length - 1) * DOWN_PAIR_GAP;
+
+  const gutter = LANE_PADDING_X * 2 + LANE_GAP;
+  const placedLanes: PlacedLane[] = [];
+  const placedNodes: PlacedNode[] = [];
+  const corridors: { left: number; right: number }[] = [];
+  let laneY = DIAGRAM_MARGIN;
+  let contentBottom = laneY;
+
+  lanes.forEach(({ lane, rows }, laneIndex) => {
+    laneY += corridorExtra(laneIndex);
+    const contentTop = laneY + LANE_PADDING_X;
+    const contentHeight = Math.max(...rows.map(stackHeight));
+    corridors.push({ left: contentTop - gutter - corridorExtra(laneIndex), right: contentTop });
+
+    placedLanes.push({
+      lane,
+      box: {
+        x: DIAGRAM_MARGIN,
+        y: laneY,
+        width: laneRight - DIAGRAM_MARGIN,
+        height: contentHeight + LANE_PADDING_X * 2,
+      },
+    });
+
+    for (const row of rows) {
+      const x = columns[row.grid]?.top ?? contentLeft;
+      let y = contentTop;
+      for (const node of row.nodes) {
+        const height = cardHeight(node);
+        placedNodes.push({
+          node,
+          box: { x, y, width: DOWN_CARD_WIDTH, height },
+          showIcon: SHOW_ICON,
+          titleSize: fittedTitleSize(
+            node.label,
+            DOWN_CARD_WIDTH >= ICON_MIN_CARD_WIDTH ? TITLE_SIZE : TITLE_SIZE_SMALL,
+            cardTextWidth(DOWN_CARD_WIDTH, SHOW_ICON),
+          ),
+          row: row.grid,
+          laneIndex,
+        });
+        y += height + DOWN_PAIR_GAP;
+      }
+    }
+
+    contentBottom = contentTop + contentHeight;
+    laneY += contentHeight + LANE_PADDING_X * 2 + LANE_GAP;
+  });
+
+  corridors.push({
+    left: contentBottom,
+    right: contentBottom + gutter + corridorExtra(placedLanes.length),
+  });
+
+  return {
+    direction: "down",
+    width: Math.ceil(laneRight + DIAGRAM_MARGIN),
+    height: Math.ceil(laneY - LANE_GAP + DIAGRAM_MARGIN),
+    lanes: placedLanes,
+    nodes: placedNodes,
+    grid: { rows: columns, corridors, laneBottom: laneRight, deadFromRow: seating.deadFromRow },
+  };
+};
+
+/** Room for a lane's name in the strip a top-to-bottom band keeps for it. */
+export const DOWN_LANE_HEADER_TEXT_WIDTH = DOWN_LANE_HEADER_WIDTH - LANE_PADDING_X * 2;
+
+/**
  * The lane's own name over its band. Lanes never widen to fit their
  * headers — that would put content in charge of where the next lane
  * starts — so a header longer than the band gives up its tail instead.
  */
-export const laneHeaderText = (lane: Lane): string => {
+export const laneHeaderText = (lane: Lane, maxWidth: number = LANE_CONTENT_WIDTH): string => {
   const full = (
     lane.subtitle === undefined ? lane.label : `${lane.label} · ${lane.subtitle}`
   ).toUpperCase();
 
-  return truncateTracked(full, LANE_LABEL_SIZE, LANE_LABEL_TRACKING, LANE_CONTENT_WIDTH);
+  return truncateTracked(full, LANE_LABEL_SIZE, LANE_LABEL_TRACKING, maxWidth);
 };
 
 const ELLIPSIS = "…";

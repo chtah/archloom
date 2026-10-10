@@ -15,7 +15,6 @@ import {
   occupiedBoxes,
   type ArchitectureLayout,
   type GapExpansions,
-  type LayoutGrid,
 } from "./architecture.js";
 import {
   chooseRetiredRoutes,
@@ -35,8 +34,10 @@ import { placeLabelPills, type LabelPlacement } from "./labels.js";
  * change staying a small move — and an uncrowded document is laid out
  * exactly as if this pass did not exist.
  *
- * A corridor is also widened when a label has nowhere on or beside its line
- * to sit — a straight line across a corridor has only its width for a pill.
+ * A gap is also widened when a label has nowhere on or beside its line to
+ * sit — a straight line across a gap has only its width for a pill. Pills read
+ * left to right, so that is the gap a horizontal line crosses: a corridor
+ * when lanes run left to right, a band between columns when they run down.
  */
 export const relieveCongestion = (
   graph: ScopedGraph,
@@ -53,7 +54,7 @@ export const relieveCongestion = (
   // only grows, so that settles too. The bound is a backstop.
   for (let round = 0; round < 6; round += 1) {
     const { routed, traffic } = routeAndCount(graph.edges, layout, retired);
-    const needed = expansionsFor(traffic, layout.grid, labelRoom);
+    const needed = expansionsFor(traffic, layout, labelRoom);
     if (!sameExpansions(needed, expansions)) {
       expansions = needed;
       layout = layoutArchitecture(graph, hints, expansions);
@@ -62,10 +63,14 @@ export const relieveCongestion = (
     }
 
     placed = { routed, labels: labelsOn(layout, routed) };
-    const grown = grownRoom(labelRoom, placed.labels.cramped, traffic);
+    const grown = grownRoom(
+      labelRoom,
+      placed.labels.cramped,
+      layout.direction === "right" ? traffic.corridorsByEdge : traffic.bandsByEdge,
+    );
     if (sameEntries(grown, labelRoom)) break;
     labelRoom = grown;
-    expansions = expansionsFor(traffic, layout.grid, labelRoom);
+    expansions = expansionsFor(traffic, layout, labelRoom);
     layout = layoutArchitecture(graph, hints, expansions);
     placed = undefined;
   }
@@ -87,12 +92,12 @@ const LABEL_CORRIDOR_AIR = 12;
 const grownRoom = (
   room: ReadonlyMap<number, number>,
   cramped: ReadonlyMap<string, number>,
-  traffic: ChannelTraffic,
+  gapsByEdge: ReadonlyMap<string, readonly number[]>,
 ): Map<number, number> => {
   const grown = new Map(room);
   for (const [id, pillWidth] of cramped) {
     const width = pillWidth + LABEL_CORRIDOR_AIR * 2;
-    for (const index of traffic.corridorsByEdge.get(id) ?? [])
+    for (const index of gapsByEdge.get(id) ?? [])
       grown.set(index, Math.max(grown.get(index) ?? 0, width));
   }
   return grown;
@@ -104,24 +109,30 @@ const widthNeeded = (traffic: number): number =>
 
 const CORRIDOR_WIDTH = LANE_PADDING_X * 2 + LANE_GAP;
 
+/** `labelRoom` is keyed by corridor left to right and by band top to bottom. */
 const expansionsFor = (
   traffic: ChannelTraffic,
-  grid: LayoutGrid,
+  layout: ArchitectureLayout,
   labelRoom: ReadonlyMap<number, number>,
 ): GapExpansions => {
+  const { grid } = layout;
+  const corridorRoom = layout.direction === "right" ? labelRoom : new Map<number, number>();
+  const bandRoom = layout.direction === "right" ? new Map<number, number>() : labelRoom;
+
   const corridors = new Map<number, number>();
-  for (const index of new Set([...traffic.corridors.keys(), ...labelRoom.keys()])) {
+  for (const index of new Set([...traffic.corridors.keys(), ...corridorRoom.keys()])) {
     const count = traffic.corridors.get(index) ?? 0;
-    const width = Math.max(count > 0 ? widthNeeded(count) : 0, labelRoom.get(index) ?? 0);
+    const width = Math.max(count > 0 ? widthNeeded(count) : 0, corridorRoom.get(index) ?? 0);
     const extra = width - CORRIDOR_WIDTH;
     if (extra > 0) corridors.set(index, extra);
   }
 
   const bands = new Map<number, number>();
-  for (const [index, count] of traffic.bands) {
+  for (const index of new Set([...traffic.bands.keys(), ...bandRoom.keys()])) {
+    const count = traffic.bands.get(index) ?? 0;
     // The band after the last row is the sliver of lane bottom padding.
     const width = index === grid.rows.length ? LANE_BOTTOM_PADDING : ROW_GAP;
-    const extra = widthNeeded(count) - width;
+    const extra = Math.max(count > 0 ? widthNeeded(count) : 0, bandRoom.get(index) ?? 0) - width;
     if (extra > 0) bands.set(index, extra);
   }
 

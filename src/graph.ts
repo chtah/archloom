@@ -100,7 +100,7 @@ const ViewSchema: z.ZodType<GraphView, GraphViewInput> = z.lazy(() => z.strictOb
   children: z.array(ViewSchema).max(32).default([]),
 }));
 const LayoutSchema = z.strictObject({
-  direction: z.enum(["right", "down"]).default("right").describe("Reserved. Accepted but not applied yet: diagrams are always laid out left to right."),
+  direction: z.enum(["right", "down"]).default("right").describe("Architecture layout. right: lanes are columns left to right. down: lanes are bands stacked top to bottom. Data-flow views are unaffected."),
   laneOrder: z.array(Id).max(16).default([]),
   rank: z.record(Id, z.int().min(0).max(256)).optional(),
 });

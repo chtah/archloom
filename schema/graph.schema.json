@@ -308,7 +308,7 @@
       "properties": {
         "direction": {
           "default": "right",
-          "description": "Reserved. Accepted but not applied yet: diagrams are always laid out left to right.",
+          "description": "Architecture layout. right: lanes are columns left to right. down: lanes are bands stacked top to bottom. Data-flow views are unaffected.",
           "type": "string",
           "enum": [
             "right",
